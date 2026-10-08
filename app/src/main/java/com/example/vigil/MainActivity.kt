@@ -98,6 +98,13 @@ fun AppRoot(vm: GameViewModel = viewModel()) {
             }
         }
 
+        // Kinh Thư Điểm Danh & Nhiệm Vụ (Scroll Quest Dialog)
+        if (vm.showQuestScrollDialog) {
+            ScrollQuestDialog(vm) {
+                vm.showQuestScrollDialog = false
+            }
+        }
+
         // Thông báo Toast nhỏ ở đầu màn hình
         val toast = vm.toastMessage
         if (toast != null) {

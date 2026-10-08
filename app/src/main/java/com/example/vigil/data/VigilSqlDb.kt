@@ -5,15 +5,21 @@ import android.content.Context
 import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
+import com.example.vigil.model.DailyCheckInReward
 import com.example.vigil.model.FriendProfile
+import com.example.vigil.model.Guild
+import com.example.vigil.model.GuildMember
 import com.example.vigil.model.InventoryItem
 import com.example.vigil.model.Item
 import com.example.vigil.model.ItemSlot
 import com.example.vigil.model.LeaderboardEntry
+import com.example.vigil.model.QuestItem
 import com.example.vigil.model.Rarity
 import com.example.vigil.model.UserProfile
 import com.example.vigil.model.WorkoutReward
+import java.time.DayOfWeek
 import java.time.LocalDate
+import java.time.temporal.TemporalAdjusters
 import kotlin.math.min
 import kotlin.random.Random
 
@@ -25,7 +31,7 @@ class VigilSqlDb(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, nu
 
     companion object {
         const val DATABASE_NAME = "vigil_app.db"
-        const val DATABASE_VERSION = 2
+        const val DATABASE_VERSION = 3
 
         @Volatile
         private var INSTANCE: VigilSqlDb? = null
@@ -44,8 +50,8 @@ class VigilSqlDb(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, nu
                 username TEXT UNIQUE NOT NULL,
                 password TEXT NOT NULL DEFAULT '123456',
                 avatar TEXT NOT NULL DEFAULT '🧑‍🎤',
-                gold INTEGER NOT NULL DEFAULT 200,
-                gems INTEGER NOT NULL DEFAULT 10,
+                gold INTEGER NOT NULL DEFAULT 0,
+                gems INTEGER NOT NULL DEFAULT 0,
                 xp INTEGER NOT NULL DEFAULT 0,
                 level INTEGER NOT NULL DEFAULT 1,
                 streak INTEGER NOT NULL DEFAULT 0,
@@ -115,10 +121,70 @@ class VigilSqlDb(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, nu
             );
         """.trimIndent())
 
+        // 6. Bảng bang hội (Guilds)
+        db.execSQL("""
+            CREATE TABLE IF NOT EXISTS guilds (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT UNIQUE NOT NULL,
+                badge TEXT NOT NULL DEFAULT '🛡️',
+                slogan TEXT NOT NULL,
+                leader_id INTEGER NOT NULL,
+                level INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT
+            );
+        """.trimIndent())
+
+        // 7. Bảng thành viên bang hội (Guild Members)
+        db.execSQL("""
+            CREATE TABLE IF NOT EXISTS guild_members (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                guild_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL UNIQUE,
+                role TEXT NOT NULL DEFAULT 'MEMBER',
+                joined_at TEXT,
+                FOREIGN KEY (guild_id) REFERENCES guilds(id),
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            );
+        """.trimIndent())
+
+        // 8. Bảng ghi nhận lần đầu hạ gục Boss để thưởng Gem (Boss First Clear)
+        db.execSQL("""
+            CREATE TABLE IF NOT EXISTS boss_clears (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                stage_id INTEGER NOT NULL,
+                cleared_at TEXT,
+                UNIQUE(user_id, stage_id)
+            );
+        """.trimIndent())
+
+        // 9. Bảng điểm danh tuần (Weekly Login Check-in)
+        db.execSQL("""
+            CREATE TABLE IF NOT EXISTS weekly_checkins (
+                user_id INTEGER PRIMARY KEY,
+                checkin_day INTEGER NOT NULL DEFAULT 0,
+                last_date TEXT,
+                week_key TEXT
+            );
+        """.trimIndent())
+
+        // 10. Bảng nhận thưởng nhiệm vụ (Quest Claims)
+        db.execSQL("""
+            CREATE TABLE IF NOT EXISTS quest_claims (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                quest_id TEXT NOT NULL,
+                period_key TEXT NOT NULL,
+                claimed_at TEXT,
+                UNIQUE(user_id, quest_id, period_key)
+            );
+        """.trimIndent())
+
         // Nạp dữ liệu mặc định ban đầu
         seedItems(db)
         seedInitialUser(db)
         seedSampleLeaderboardUsers(db)
+        seedSampleGuilds(db)
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -138,6 +204,58 @@ class VigilSqlDb(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, nu
             """.trimIndent())
             seedSampleLeaderboardUsers(db)
         }
+        if (oldVersion < 3) {
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS guilds (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT UNIQUE NOT NULL,
+                    badge TEXT NOT NULL DEFAULT '🛡️',
+                    slogan TEXT NOT NULL,
+                    leader_id INTEGER NOT NULL,
+                    level INTEGER NOT NULL DEFAULT 1,
+                    created_at TEXT
+                );
+            """.trimIndent())
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS guild_members (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    guild_id INTEGER NOT NULL,
+                    user_id INTEGER NOT NULL UNIQUE,
+                    role TEXT NOT NULL DEFAULT 'MEMBER',
+                    joined_at TEXT,
+                    FOREIGN KEY (guild_id) REFERENCES guilds(id),
+                    FOREIGN KEY (user_id) REFERENCES users(id)
+                );
+            """.trimIndent())
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS boss_clears (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    stage_id INTEGER NOT NULL,
+                    cleared_at TEXT,
+                    UNIQUE(user_id, stage_id)
+                );
+            """.trimIndent())
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS weekly_checkins (
+                    user_id INTEGER PRIMARY KEY,
+                    checkin_day INTEGER NOT NULL DEFAULT 0,
+                    last_date TEXT,
+                    week_key TEXT
+                );
+            """.trimIndent())
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS quest_claims (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    quest_id TEXT NOT NULL,
+                    period_key TEXT NOT NULL,
+                    claimed_at TEXT,
+                    UNIQUE(user_id, quest_id, period_key)
+                );
+            """.trimIndent())
+            seedSampleGuilds(db)
+        }
     }
 
     private fun seedInitialUser(db: SQLiteDatabase) {
@@ -146,8 +264,8 @@ class VigilSqlDb(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, nu
             put("username", "Hachimi")
             put("password", "123456")
             put("avatar", "🦊")
-            put("gold", 350)
-            put("gems", 15)
+            put("gold", 0)
+            put("gems", 0)
             put("xp", 120)
             put("level", 5)
             put("streak", 4)
@@ -398,6 +516,7 @@ class VigilSqlDb(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, nu
             val cursor = db.rawQuery("SELECT * FROM users WHERE id = ?", arrayOf(userId.toString()))
             cursor.moveToFirst()
             var gold = cursor.getInt(cursor.getColumnIndexOrThrow("gold"))
+            var gems = cursor.getInt(cursor.getColumnIndexOrThrow("gems"))
             var xp = cursor.getInt(cursor.getColumnIndexOrThrow("xp"))
             var level = cursor.getInt(cursor.getColumnIndexOrThrow("level"))
             var streak = cursor.getInt(cursor.getColumnIndexOrThrow("streak"))
@@ -417,11 +536,14 @@ class VigilSqlDb(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, nu
             var droppedItem: Item? = null
             var xpEarned = 0
             var goldEarned = 0
+            var gemsEarned = 0
+            var isBossFirstClear = false
 
             if (isFreeTraining) {
                 // CHẾ ĐỘ TẬP TỰ DO: Hoàn toàn không có phần thưởng, không rơi đồ, không nhảy ải
                 xpEarned = 0
                 goldEarned = 0
+                gemsEarned = 0
                 droppedItem = null
             } else {
                 // CHẾ ĐỘ CHIẾN DỊCH / BOSS:
@@ -496,6 +618,30 @@ class VigilSqlDb(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, nu
                 xp += xpEarned
                 gold += goldEarned
 
+                // 4. KIỂM TRA PHẦN THƯỞNG GEM CHO LẦN ĐẦU TIÊN ĐÁNH BẠI BOSS (CÂN BẰNG GEM)
+                if (isBoss && monsterStageId != null) {
+                    val clearCursor = db.rawQuery(
+                        "SELECT id FROM boss_clears WHERE user_id = ? AND stage_id = ?",
+                        arrayOf(userId.toString(), monsterStageId.toString())
+                    )
+                    val alreadyCleared = clearCursor.moveToFirst()
+                    clearCursor.close()
+
+                    if (!alreadyCleared) {
+                        isBossFirstClear = true
+                        // Thưởng Gem giá trị cho lần đầu hạ gục Boss (15 Gem cơ bản + thêm theo ải)
+                        gemsEarned = 15 + (monsterStageId / 4) * 5
+                        gems += gemsEarned
+
+                        val bCv = ContentValues().apply {
+                            put("user_id", userId)
+                            put("stage_id", monsterStageId)
+                            put("cleared_at", todayStr)
+                        }
+                        db.insert("boss_clears", null, bCv)
+                    }
+                }
+
                 // Chỉ tăng ải khi đánh bại đúng ải quái vật hiện tại
                 if (monsterStageId != null && monsterStageId == stage) {
                     stage += 1
@@ -512,6 +658,7 @@ class VigilSqlDb(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, nu
             // Lưu cập nhật vào users
             val userCv = ContentValues().apply {
                 put("gold", gold)
+                put("gems", gems)
                 put("xp", xp)
                 put("level", level)
                 put("streak", streak)
@@ -545,7 +692,10 @@ class VigilSqlDb(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, nu
                 newGold = gold,
                 newXp = xp,
                 newStreak = streak,
-                droppedItem = droppedItem
+                droppedItem = droppedItem,
+                gemsEarned = gemsEarned,
+                newGems = gems,
+                isBossFirstClear = isBossFirstClear
             )
         } finally {
             db.endTransaction()
@@ -595,8 +745,8 @@ class VigilSqlDb(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, nu
             put("username", trimmed)
             put("password", password)
             put("avatar", avatar)
-            put("gold", 250)
-            put("gems", 10)
+            put("gold", 0)
+            put("gems", 0)
             put("xp", 0)
             put("level", 1)
             put("streak", 1)
@@ -868,4 +1018,597 @@ class VigilSqlDb(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, nu
             entry.copy(rank = index + 1)
         }
     }
+
+    // =========================================================================
+    // HỆ THỐNG BANG HỘI (GUILD)
+    // =========================================================================
+
+    private fun seedSampleGuilds(db: SQLiteDatabase) {
+        val sampleGuilds = listOf(
+            Triple("Taiwan Fitness 🇹🇼", "🇹🇼", "Pushing for improvement every single rep!"),
+            Triple("Chiến Binh Rồng 🐉", "🐉", "Ý chí rèn luyện tựa long thần!"),
+            Triple("Titan Thép 🗿", "🗿", "Cơ bắp vững chắc như bàn thạch.")
+        )
+        val leaders = listOf(2, 5, 4) // ShadowBlade, DragonFit, IronTitan
+        sampleGuilds.forEachIndexed { i, (name, badge, slogan) ->
+            val gCv = ContentValues().apply {
+                put("id", i + 1)
+                put("name", name)
+                put("badge", badge)
+                put("slogan", slogan)
+                put("leader_id", leaders[i])
+                put("level", 2 + i)
+                put("created_at", LocalDate.now().toString())
+            }
+            db.insertWithOnConflict("guilds", null, gCv, SQLiteDatabase.CONFLICT_IGNORE)
+
+            val mCv = ContentValues().apply {
+                put("guild_id", i + 1)
+                put("user_id", leaders[i])
+                put("role", "LEADER")
+                put("joined_at", LocalDate.now().toString())
+            }
+            db.insertWithOnConflict("guild_members", null, mCv, SQLiteDatabase.CONFLICT_IGNORE)
+        }
+    }
+
+    fun createGuild(userId: Int, name: String, badge: String, slogan: String): Pair<Boolean, String> {
+        val trimmed = name.trim()
+        if (trimmed.length < 3) return Pair(false, "Tên bang hội phải có ít nhất 3 ký tự!")
+        if (slogan.isBlank()) return Pair(false, "Vui lòng nhập khẩu hiệu cho bang hội!")
+
+        val db = writableDatabase
+        // Kiểm tra người chơi đã có bang hội chưa
+        val checkMember = db.rawQuery("SELECT id FROM guild_members WHERE user_id = ?", arrayOf(userId.toString()))
+        val alreadyInGuild = checkMember.moveToFirst()
+        checkMember.close()
+        if (alreadyInGuild) return Pair(false, "Bạn đã tham gia một bang hội khác rồi! Hãy rời bang trước khi lập bang mới.")
+
+        // Kiểm tra tên bang hội đã tồn tại chưa
+        val checkName = db.rawQuery("SELECT id FROM guilds WHERE LOWER(name) = LOWER(?)", arrayOf(trimmed))
+        val nameExists = checkName.moveToFirst()
+        checkName.close()
+        if (nameExists) return Pair(false, "Tên bang hội '$trimmed' đã có người sử dụng!")
+
+        val gCv = ContentValues().apply {
+            put("name", trimmed)
+            put("badge", badge)
+            put("slogan", slogan.trim())
+            put("leader_id", userId)
+            put("level", 1)
+            put("created_at", LocalDate.now().toString())
+        }
+        val guildId = db.insert("guilds", null, gCv)
+        if (guildId != -1L) {
+            val mCv = ContentValues().apply {
+                put("guild_id", guildId.toInt())
+                put("user_id", userId)
+                put("role", "LEADER")
+                put("joined_at", LocalDate.now().toString())
+            }
+            db.insert("guild_members", null, mCv)
+            return Pair(true, "👑 Thành lập bang hội '$trimmed' thành công!")
+        }
+        return Pair(false, "Có lỗi xảy ra khi tạo bang hội!")
+    }
+
+    fun joinGuild(userId: Int, guildId: Int): Pair<Boolean, String> {
+        val db = writableDatabase
+        val checkMember = db.rawQuery("SELECT id FROM guild_members WHERE user_id = ?", arrayOf(userId.toString()))
+        val alreadyInGuild = checkMember.moveToFirst()
+        checkMember.close()
+        if (alreadyInGuild) return Pair(false, "Bạn đang là thành viên của bang hội khác!")
+
+        val gCursor = db.rawQuery("SELECT name FROM guilds WHERE id = ?", arrayOf(guildId.toString()))
+        if (!gCursor.moveToFirst()) {
+            gCursor.close()
+            return Pair(false, "Bang hội không tồn tại!")
+        }
+        val guildName = gCursor.getString(0)
+        gCursor.close()
+
+        val mCv = ContentValues().apply {
+            put("guild_id", guildId)
+            put("user_id", userId)
+            put("role", "MEMBER")
+            put("joined_at", LocalDate.now().toString())
+        }
+        val res = db.insert("guild_members", null, mCv)
+        return if (res != -1L) {
+            Pair(true, "⚔️ Chào mừng bạn gia nhập bang hội $guildName!")
+        } else {
+            Pair(false, "Không thể gia nhập bang hội!")
+        }
+    }
+
+    fun leaveGuild(userId: Int): Pair<Boolean, String> {
+        val db = writableDatabase
+        val mCursor = db.rawQuery("SELECT guild_id, role FROM guild_members WHERE user_id = ?", arrayOf(userId.toString()))
+        if (!mCursor.moveToFirst()) {
+            mCursor.close()
+            return Pair(false, "Bạn chưa gia nhập bang hội nào!")
+        }
+        val guildId = mCursor.getInt(0)
+        val role = mCursor.getString(1)
+        mCursor.close()
+
+        if (role == "LEADER") {
+            // Chủ bang giải tán bang hội
+            db.delete("guild_members", "guild_id = ?", arrayOf(guildId.toString()))
+            db.delete("guilds", "id = ?", arrayOf(guildId.toString()))
+            return Pair(true, "Đã giải tán bang hội của bạn!")
+        } else {
+            db.delete("guild_members", "user_id = ?", arrayOf(userId.toString()))
+            return Pair(true, "Đã rời khỏi bang hội!")
+        }
+    }
+
+    fun getUserGuild(userId: Int): Guild? {
+        val db = readableDatabase
+        val query = """
+            SELECT g.id, g.name, g.badge, g.slogan, g.leader_id, u.username, g.level, gm.role
+            FROM guild_members gm
+            JOIN guilds g ON gm.guild_id = g.id
+            JOIN users u ON g.leader_id = u.id
+            WHERE gm.user_id = ?
+        """.trimIndent()
+        val cursor = db.rawQuery(query, arrayOf(userId.toString()))
+        if (!cursor.moveToFirst()) {
+            cursor.close()
+            return null
+        }
+        val gId = cursor.getInt(0)
+        val gName = cursor.getString(1)
+        val badge = cursor.getString(2)
+        val slogan = cursor.getString(3)
+        val leaderId = cursor.getInt(4)
+        val leaderName = cursor.getString(5)
+        val level = cursor.getInt(6)
+        val role = cursor.getString(7)
+        cursor.close()
+
+        val cCount = db.rawQuery("SELECT COUNT(*) FROM guild_members WHERE guild_id = ?", arrayOf(gId.toString()))
+        val count = if (cCount.moveToFirst()) cCount.getInt(0) else 1
+        cCount.close()
+
+        val cReps = db.rawQuery("""
+            SELECT SUM(u.total_reps) 
+            FROM guild_members gm 
+            JOIN users u ON gm.user_id = u.id 
+            WHERE gm.guild_id = ?
+        """.trimIndent(), arrayOf(gId.toString()))
+        val reps = if (cReps.moveToFirst()) cReps.getInt(0) else 0
+        cReps.close()
+
+        return Guild(
+            id = gId,
+            name = gName,
+            badge = badge,
+            slogan = slogan,
+            leaderId = leaderId,
+            leaderName = leaderName,
+            level = level,
+            memberCount = count,
+            totalReps = reps,
+            isUserMember = true,
+            isUserLeader = (role == "LEADER")
+        )
+    }
+
+    fun getAllGuilds(userId: Int): List<Guild> {
+        val db = readableDatabase
+        val list = mutableListOf<Guild>()
+        val userGuild = getUserGuild(userId)
+
+        val cursor = db.rawQuery("""
+            SELECT g.id, g.name, g.badge, g.slogan, g.leader_id, u.username, g.level
+            FROM guilds g
+            JOIN users u ON g.leader_id = u.id
+            ORDER BY g.level DESC, g.id ASC
+        """.trimIndent(), null)
+
+        while (cursor.moveToNext()) {
+            val gId = cursor.getInt(0)
+            val gName = cursor.getString(1)
+            val badge = cursor.getString(2)
+            val slogan = cursor.getString(3)
+            val leaderId = cursor.getInt(4)
+            val leaderName = cursor.getString(5)
+            val level = cursor.getInt(6)
+
+            val cCount = db.rawQuery("SELECT COUNT(*) FROM guild_members WHERE guild_id = ?", arrayOf(gId.toString()))
+            val count = if (cCount.moveToFirst()) cCount.getInt(0) else 1
+            cCount.close()
+
+            val cReps = db.rawQuery("""
+                SELECT SUM(u.total_reps) 
+                FROM guild_members gm 
+                JOIN users u ON gm.user_id = u.id 
+                WHERE gm.guild_id = ?
+            """.trimIndent(), arrayOf(gId.toString()))
+            val reps = if (cReps.moveToFirst()) cReps.getInt(0) else 0
+            cReps.close()
+
+            list.add(
+                Guild(
+                    id = gId,
+                    name = gName,
+                    badge = badge,
+                    slogan = slogan,
+                    leaderId = leaderId,
+                    leaderName = leaderName,
+                    level = level,
+                    memberCount = count,
+                    totalReps = reps,
+                    isUserMember = (userGuild?.id == gId),
+                    isUserLeader = (userGuild?.id == gId && userGuild.isUserLeader)
+                )
+            )
+        }
+        cursor.close()
+        return list
+    }
+
+    fun getGuildMembers(guildId: Int): List<GuildMember> {
+        val db = readableDatabase
+        val list = mutableListOf<GuildMember>()
+        val cursor = db.rawQuery("""
+            SELECT u.id, u.username, u.avatar, u.level, gm.role, u.total_reps
+            FROM guild_members gm
+            JOIN users u ON gm.user_id = u.id
+            WHERE gm.guild_id = ?
+            ORDER BY CASE WHEN gm.role = 'LEADER' THEN 1 ELSE 2 END, u.total_reps DESC
+        """.trimIndent(), arrayOf(guildId.toString()))
+
+        while (cursor.moveToNext()) {
+            list.add(
+                GuildMember(
+                    userId = cursor.getInt(0),
+                    username = cursor.getString(1),
+                    avatar = cursor.getString(2) ?: "🧑‍🎤",
+                    level = cursor.getInt(3),
+                    role = cursor.getString(4),
+                    totalReps = cursor.getInt(5)
+                )
+            )
+        }
+        cursor.close()
+        return list
+    }
+
+    // =========================================================================
+    // HỆ THỐNG ĐIỂM DANH ĐĂNG NHẬP HÀNG TUẦN (WEEKLY LOGIN CHECK-IN)
+    // =========================================================================
+
+    private fun getCurrentWeekKey(): String {
+        val now = LocalDate.now()
+        val monday = now.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+        return monday.toString()
+    }
+
+    fun getWeeklyCheckInRewards(userId: Int): Pair<List<DailyCheckInReward>, Boolean> {
+        val db = writableDatabase
+        val todayStr = LocalDate.now().toString()
+        val currentWeekKey = getCurrentWeekKey()
+
+        val cursor = db.rawQuery("SELECT checkin_day, last_date, week_key FROM weekly_checkins WHERE user_id = ?", arrayOf(userId.toString()))
+        var checkinDay = 0
+        var lastDate: String? = null
+        var weekKey: String? = null
+
+        if (cursor.moveToFirst()) {
+            checkinDay = cursor.getInt(0)
+            lastDate = cursor.getString(1)
+            weekKey = cursor.getString(2)
+        }
+        cursor.close()
+
+        // Nếu sang tuần mới, reset lại số ngày điểm danh
+        if (weekKey != currentWeekKey) {
+            checkinDay = 0
+            lastDate = null
+            val cv = ContentValues().apply {
+                put("user_id", userId)
+                put("checkin_day", 0)
+                put("last_date", null as String?)
+                put("week_key", currentWeekKey)
+            }
+            db.insertWithOnConflict("weekly_checkins", null, cv, SQLiteDatabase.CONFLICT_REPLACE)
+        }
+
+        val canClaimToday = (lastDate != todayStr && checkinDay < 7)
+        val rewardsConfig = listOf(
+            Pair(50, 0),   // Ngày 1: 50 Vàng
+            Pair(0, 2),    // Ngày 2: 2 Gem
+            Pair(100, 0),  // Ngày 3: 100 Vàng
+            Pair(0, 5),    // Ngày 4: 5 Gem
+            Pair(200, 0),  // Ngày 5: 200 Vàng
+            Pair(0, 10),   // Ngày 6: 10 Gem
+            Pair(500, 20)  // Ngày 7: 500 Vàng + 20 Gem
+        )
+
+        val list = (1..7).map { day ->
+            val (gold, gems) = rewardsConfig[day - 1]
+            val isClaimed = day <= checkinDay
+            val isAvailableToday = canClaimToday && (day == checkinDay + 1)
+            val isUpcoming = day > checkinDay + (if (canClaimToday) 1 else 0)
+
+            DailyCheckInReward(
+                day = day,
+                gold = gold,
+                gems = gems,
+                isClaimed = isClaimed,
+                isAvailableToday = isAvailableToday,
+                isUpcoming = isUpcoming
+            )
+        }
+
+        return Pair(list, canClaimToday)
+    }
+
+    fun claimWeeklyReward(userId: Int): Pair<Boolean, String> {
+        val (rewards, canClaimToday) = getWeeklyCheckInRewards(userId)
+        if (!canClaimToday) {
+            return Pair(false, "Bạn đã điểm danh nhận quà hôm nay rồi! Hãy quay lại vào ngày mai nhé.")
+        }
+        val targetReward = rewards.firstOrNull { it.isAvailableToday } ?: return Pair(false, "Không có phần thưởng khả dụng.")
+
+        val db = writableDatabase
+        val todayStr = LocalDate.now().toString()
+        val currentWeekKey = getCurrentWeekKey()
+
+        // Cập nhật bảng weekly_checkins
+        val cv = ContentValues().apply {
+            put("user_id", userId)
+            put("checkin_day", targetReward.day)
+            put("last_date", todayStr)
+            put("week_key", currentWeekKey)
+        }
+        db.insertWithOnConflict("weekly_checkins", null, cv, SQLiteDatabase.CONFLICT_REPLACE)
+
+        // Cộng vàng và gem cho người chơi
+        db.execSQL(
+            "UPDATE users SET gold = gold + ?, gems = gems + ? WHERE id = ?",
+            arrayOf(targetReward.gold, targetReward.gems, userId)
+        )
+
+        val msg = buildString {
+            append("🎉 Điểm danh Ngày ${targetReward.day} thành công! ")
+            if (targetReward.gold > 0) append("+${targetReward.gold} 🪙 ")
+            if (targetReward.gems > 0) append("+${targetReward.gems} ◆ ")
+        }
+        return Pair(true, msg)
+    }
+
+    // =========================================================================
+    // HỆ THỐNG NHIỆM VỤ NGÀY, TUẦN, THÁNG (QUESTS SYSTEM)
+    // =========================================================================
+
+    fun getQuests(
+        userId: Int,
+        todayReps: Int,
+        weekReps: Int,
+        totalReps: Int,
+        streak: Int,
+        stage: Int,
+        level: Int
+    ): List<QuestItem> {
+        val db = readableDatabase
+        val todayStr = LocalDate.now().toString()
+        val currentWeekKey = getCurrentWeekKey()
+        val currentMonthKey = todayStr.substring(0, 7) // "YYYY-MM"
+
+        // Đọc danh sách nhiệm vụ đã nhận trong kỳ
+        val claimedIds = mutableSetOf<String>()
+        val c = db.rawQuery("""
+            SELECT quest_id FROM quest_claims 
+            WHERE user_id = ? AND period_key IN (?, ?, ?)
+        """.trimIndent(), arrayOf(userId.toString(), todayStr, currentWeekKey, currentMonthKey))
+        while (c.moveToNext()) {
+            claimedIds.add(c.getString(0))
+        }
+        c.close()
+
+        // Số boss đã hạ gục
+        val bc = db.rawQuery("SELECT COUNT(*) FROM boss_clears WHERE user_id = ?", arrayOf(userId.toString()))
+        val bossClearedCount = if (bc.moveToFirst()) bc.getInt(0) else 0
+        bc.close()
+
+        val list = mutableListOf<QuestItem>()
+
+        // 1. NHIỆM VỤ NGÀY (DAILY)
+        list.add(
+            QuestItem(
+                id = "daily_1",
+                name = "Chiến Binh Chăm Chỉ",
+                quote = "“Ba mươi rep khởi động mỗi ngày giúp máu huyết lưu thông.”",
+                current = todayReps,
+                goal = 30,
+                xp = 60,
+                gold = 30,
+                gems = 0,
+                isClaimed = claimedIds.contains("daily_1"),
+                category = "DAILY"
+            )
+        )
+        list.add(
+            QuestItem(
+                id = "daily_2",
+                name = "Khởi Động Năng Lượng",
+                quote = "“Bắt đầu buổi tập đầu tiên trong ngày.”",
+                current = if (todayReps > 0) 1 else 0,
+                goal = 1,
+                xp = 40,
+                gold = 20,
+                gems = 0,
+                isClaimed = claimedIds.contains("daily_2"),
+                category = "DAILY"
+            )
+        )
+        list.add(
+            QuestItem(
+                id = "daily_3",
+                name = "Bất Khả Chiến Bại",
+                quote = "“Sáu mươi rep trong một ngày — chứng minh sự bền bỉ phi thường.”",
+                current = todayReps,
+                goal = 60,
+                xp = 120,
+                gold = 60,
+                gems = 1,
+                isClaimed = claimedIds.contains("daily_3"),
+                category = "DAILY"
+            )
+        )
+
+        // 2. NHIỆM VỤ TUẦN (WEEKLY)
+        list.add(
+            QuestItem(
+                id = "weekly_1",
+                name = "Bền Bỉ Trường Kỳ",
+                quote = "“Hai trăm rep trong cả tuần — không chùn bước trước thử thách.”",
+                current = weekReps,
+                goal = 200,
+                xp = 350,
+                gold = 150,
+                gems = 3,
+                isClaimed = claimedIds.contains("weekly_1"),
+                category = "WEEKLY"
+            )
+        )
+        list.add(
+            QuestItem(
+                id = "weekly_2",
+                name = "Chuỗi Ngày Thép",
+                quote = "“Duy trì chuỗi tập 3 ngày liên tục trong tuần.”",
+                current = streak.coerceAtMost(3),
+                goal = 3,
+                xp = 250,
+                gold = 100,
+                gems = 2,
+                isClaimed = claimedIds.contains("weekly_2"),
+                category = "WEEKLY"
+            )
+        )
+        list.add(
+            QuestItem(
+                id = "weekly_3",
+                name = "Đồ Tể Quái Vật",
+                quote = "“Vượt qua 3 ải chiến dịch trong tuần này.”",
+                current = stage.coerceAtMost(3),
+                goal = 3,
+                xp = 400,
+                gold = 200,
+                gems = 5,
+                isClaimed = claimedIds.contains("weekly_3"),
+                category = "WEEKLY"
+            )
+        )
+
+        // 3. NHIỆM VỤ THÁNG (MONTHLY)
+        list.add(
+            QuestItem(
+                id = "monthly_1",
+                name = "Huyền Thoại Thể Lực",
+                quote = "“Một nghìn rep tích lũy — cột mốc của những nhà vô địch.”",
+                current = totalReps.coerceAtMost(1000),
+                goal = 1000,
+                xp = 1500,
+                gold = 600,
+                gems = 15,
+                isClaimed = claimedIds.contains("monthly_1"),
+                category = "MONTHLY"
+            )
+        )
+        list.add(
+            QuestItem(
+                id = "monthly_2",
+                name = "Chinh Phục Đỉnh Cao",
+                quote = "“Đạt Cấp độ 5 trở lên để mở khóa tiềm năng vô hạn.”",
+                current = level.coerceAtMost(5),
+                goal = 5,
+                xp = 1000,
+                gold = 500,
+                gems = 10,
+                isClaimed = claimedIds.contains("monthly_2"),
+                category = "MONTHLY"
+            )
+        )
+        list.add(
+            QuestItem(
+                id = "monthly_3",
+                name = "Sát Thủ Trùm",
+                quote = "“Đánh bại ít nhất 1 Boss hùng mạnh trong tháng.”",
+                current = bossClearedCount.coerceAtMost(1),
+                goal = 1,
+                xp = 2000,
+                gold = 800,
+                gems = 20,
+                isClaimed = claimedIds.contains("monthly_3"),
+                category = "MONTHLY"
+            )
+        )
+
+        return list
+    }
+
+    fun claimQuestReward(userId: Int, quest: QuestItem): Pair<Boolean, String> {
+        val todayStr = LocalDate.now().toString()
+        val periodKey = when (quest.category) {
+            "DAILY" -> todayStr
+            "WEEKLY" -> getCurrentWeekKey()
+            else -> todayStr.substring(0, 7)
+        }
+
+        val db = writableDatabase
+        val check = db.rawQuery(
+            "SELECT id FROM quest_claims WHERE user_id = ? AND quest_id = ? AND period_key = ?",
+            arrayOf(userId.toString(), quest.id, periodKey)
+        )
+        val already = check.moveToFirst()
+        check.close()
+        if (already) return Pair(false, "Bạn đã nhận phần thưởng nhiệm vụ này rồi!")
+
+        val cv = ContentValues().apply {
+            put("user_id", userId)
+            put("quest_id", quest.id)
+            put("period_key", periodKey)
+            put("claimed_at", todayStr)
+        }
+        val ins = db.insert("quest_claims", null, cv)
+        if (ins != -1L) {
+            // Cộng thưởng XP, Vàng, Gems và thăng cấp nếu đủ
+            val uCursor = db.rawQuery("SELECT xp, level, gold, gems FROM users WHERE id = ?", arrayOf(userId.toString()))
+            if (uCursor.moveToFirst()) {
+                var xp = uCursor.getInt(0) + quest.xp
+                var lvl = uCursor.getInt(1)
+                val gold = uCursor.getInt(2) + quest.gold
+                val gems = uCursor.getInt(3) + quest.gems
+
+                var xpNeeded = 80 + lvl * 160
+                while (xp >= xpNeeded) {
+                    xp -= xpNeeded
+                    lvl += 1
+                    xpNeeded = 80 + lvl * 160
+                }
+
+                val uCv = ContentValues().apply {
+                    put("xp", xp)
+                    put("level", lvl)
+                    put("gold", gold)
+                    put("gems", gems)
+                }
+                db.update("users", uCv, "id = ?", arrayOf(userId.toString()))
+            }
+            uCursor.close()
+
+            val msg = buildString {
+                append("🎁 Đã nhận: +${quest.xp} XP")
+                if (quest.gold > 0) append(", +${quest.gold} 🪙")
+                if (quest.gems > 0) append(", +${quest.gems} ◆")
+            }
+            return Pair(true, msg)
+        }
+        return Pair(false, "Không thể nhận thưởng nhiệm vụ!")
+    }
 }
+

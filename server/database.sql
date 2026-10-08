@@ -12,8 +12,8 @@ CREATE TABLE IF NOT EXISTS users (
     username VARCHAR(50) NOT NULL UNIQUE DEFAULT 'Hachimi',
     password VARCHAR(255) NOT NULL DEFAULT '123456',
     avatar VARCHAR(20) NOT NULL DEFAULT '🧑‍🎤',
-    gold INT NOT NULL DEFAULT 100,
-    gems INT NOT NULL DEFAULT 10,
+    gold INT NOT NULL DEFAULT 0,
+    gems INT NOT NULL DEFAULT 0,
     xp INT NOT NULL DEFAULT 0,
     level INT NOT NULL DEFAULT 1,
     streak INT NOT NULL DEFAULT 0,
@@ -158,7 +158,7 @@ ON DUPLICATE KEY UPDATE name=VALUES(name);
 
 -- KHỞI TẠO USER MẶC ĐỊNH & DỮ LIỆU BẢNG XẾP HẠNG THẾ GIỚI
 INSERT INTO users (id, username, password, avatar, gold, gems, xp, level, streak, total_reps, stage) VALUES
-(1, 'Hachimi', '123456', '🦊', 250, 10, 80, 2, 3, 45, 2),
+(1, 'Hachimi', '123456', '🦊', 0, 0, 80, 2, 3, 45, 2),
 (2, 'ShadowBlade', '123456', '🥷', 500, 25, 450, 5, 7, 210, 4),
 (3, 'ValkyrieGym', '123456', '👑', 900, 40, 950, 8, 14, 480, 7),
 (4, 'IronTitan', '123456', '🗿', 1400, 60, 1600, 12, 21, 850, 10),

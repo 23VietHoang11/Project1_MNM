@@ -8,11 +8,15 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.vigil.model.DailyCheckInReward
 import com.example.vigil.model.FriendProfile
+import com.example.vigil.model.Guild
+import com.example.vigil.model.GuildMember
 import com.example.vigil.model.InventoryItem
 import com.example.vigil.model.Item
 import com.example.vigil.model.ItemSlot
 import com.example.vigil.model.LeaderboardEntry
+import com.example.vigil.model.QuestItem
 import com.example.vigil.model.WorkoutReward
 import com.example.vigil.network.ApiClient
 import com.example.vigil.pose.Exercise
@@ -21,7 +25,7 @@ import java.time.LocalDate
 
 /**
  * ViewModel kết hợp CSDL SQL cục bộ (SQLite) và Backend REST API (MySQL).
- * Quản lý trạng thái Xác Thực, Bạn Bè, Bảng Xếp Hạng Thế Giới, Cửa Hàng, Trang Bị, và Tỷ Lệ Rớt Đồ.
+ * Quản lý trạng thái Xác Thực, Bạn Bè, Bảng Xếp Hạng Thế Giới, Cửa Hàng, Trang Bị, Bang Hội, Điểm Danh, và Nhiệm Vụ.
  */
 class GameViewModel(app: Application) : AndroidViewModel(app) {
     private val db = VigilSqlDb.get(app)
@@ -32,8 +36,8 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
     var isLoggedIn by mutableStateOf(false)
     var name by mutableStateOf("Hachimi")
     var avatar by mutableStateOf("🦊")
-    var gold by mutableIntStateOf(250)
-    var gems by mutableIntStateOf(10)
+    var gold by mutableIntStateOf(0)
+    var gems by mutableIntStateOf(0)
     var xp by mutableIntStateOf(0)
     var level by mutableIntStateOf(1)
     var streak by mutableIntStateOf(1)
@@ -45,6 +49,18 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
     var friendsList by mutableStateOf<List<FriendProfile>>(emptyList())
     var leaderboardList by mutableStateOf<List<LeaderboardEntry>>(emptyList())
     var leaderboardSortBy by mutableStateOf("CP") // "CP", "LEVEL", "REPS", "STREAK"
+
+    // Bang Hội (Guilds)
+    var userGuild by mutableStateOf<Guild?>(null)
+    var allGuilds by mutableStateOf<List<Guild>>(emptyList())
+    var guildMembers by mutableStateOf<List<GuildMember>>(emptyList())
+    var showCreateGuildDialog by mutableStateOf(false)
+
+    // Điểm danh hàng tuần (Weekly Check-in) & Nhiệm vụ (Quests)
+    var weeklyCheckInRewards by mutableStateOf<List<DailyCheckInReward>>(emptyList())
+    var canClaimCheckInToday by mutableStateOf(false)
+    var showQuestScrollDialog by mutableStateOf(false)
+    var questsList by mutableStateOf<List<QuestItem>>(emptyList())
 
     // Danh sách Cửa Hàng & Kho đồ
     var shopItems by mutableStateOf<List<Item>>(emptyList())
@@ -120,6 +136,9 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
                 avatar = user.avatar
                 isLoggedIn = true
                 loadDataFromSql()
+                if (canClaimCheckInToday) {
+                    showQuestScrollDialog = true
+                }
             } else {
                 isLoggedIn = false
             }
@@ -132,6 +151,9 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
                 avatar = defaultUser.avatar
                 isLoggedIn = true
                 loadDataFromSql()
+                if (canClaimCheckInToday) {
+                    showQuestScrollDialog = true
+                }
             }
         }
     }
@@ -163,6 +185,18 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
         // Nạp danh sách Bạn Bè và Bảng Xếp Hạng Thế Giới
         friendsList = db.getFriends(currentUserId)
         leaderboardList = db.getLeaderboard(currentUserId, leaderboardSortBy)
+
+        // Nạp bang hội
+        userGuild = db.getUserGuild(currentUserId)
+        allGuilds = db.getAllGuilds(currentUserId)
+        guildMembers = if (userGuild != null) db.getGuildMembers(userGuild!!.id) else emptyList()
+
+        // Nạp điểm danh tuần & nhiệm vụ
+        val (checkInList, canClaim) = db.getWeeklyCheckInRewards(currentUserId)
+        weeklyCheckInRewards = checkInList
+        canClaimCheckInToday = canClaim
+        val wReps = weekReps()
+        questsList = db.getQuests(currentUserId, todayReps, wReps, totalReps, streak, stage, level)
     }
 
     // =========================================================================
@@ -177,6 +211,9 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
             isLoggedIn = true
             prefs.edit().putInt("logged_in_user_id", userId).putString("username", username).apply()
             loadDataFromSql()
+            if (canClaimCheckInToday) {
+                showQuestScrollDialog = true
+            }
             toastMessage = "Đăng nhập thành công! Chào $name! ⚔️"
 
             viewModelScope.launch {
@@ -257,6 +294,75 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
     fun setLeaderboardFilter(sortBy: String) {
         leaderboardSortBy = sortBy
         leaderboardList = db.getLeaderboard(currentUserId, sortBy)
+    }
+
+    // =========================================================================
+    // HỆ THỐNG BANG HỘI (GUILDS)
+    // =========================================================================
+
+    fun createGuild(guildName: String, badge: String, slogan: String): Boolean {
+        val (success, msg) = db.createGuild(currentUserId, guildName, badge, slogan)
+        toastMessage = msg
+        if (success) {
+            userGuild = db.getUserGuild(currentUserId)
+            allGuilds = db.getAllGuilds(currentUserId)
+            if (userGuild != null) {
+                guildMembers = db.getGuildMembers(userGuild!!.id)
+            }
+            showCreateGuildDialog = false
+            return true
+        }
+        return false
+    }
+
+    fun joinGuild(guildId: Int): Boolean {
+        val (success, msg) = db.joinGuild(currentUserId, guildId)
+        toastMessage = msg
+        if (success) {
+            userGuild = db.getUserGuild(currentUserId)
+            allGuilds = db.getAllGuilds(currentUserId)
+            if (userGuild != null) {
+                guildMembers = db.getGuildMembers(userGuild!!.id)
+            }
+            return true
+        }
+        return false
+    }
+
+    fun leaveGuild(): Boolean {
+        val (success, msg) = db.leaveGuild(currentUserId)
+        toastMessage = msg
+        if (success) {
+            userGuild = null
+            guildMembers = emptyList()
+            allGuilds = db.getAllGuilds(currentUserId)
+            return true
+        }
+        return false
+    }
+
+    // =========================================================================
+    // ĐIỂM DANH HÀNG TUẦN & NHIỆM VỤ (WEEKLY CHECK-IN & QUESTS)
+    // =========================================================================
+
+    fun claimWeeklyCheckIn(): Boolean {
+        val (success, msg) = db.claimWeeklyReward(currentUserId)
+        toastMessage = msg
+        if (success) {
+            loadDataFromSql()
+            return true
+        }
+        return false
+    }
+
+    fun claimQuest(quest: QuestItem): Boolean {
+        val (success, msg) = db.claimQuestReward(currentUserId, quest)
+        toastMessage = msg
+        if (success) {
+            loadDataFromSql()
+            return true
+        }
+        return false
     }
 
     /**

@@ -27,7 +27,7 @@ let useFallback = false;
 // Dữ liệu bộ nhớ tạm phòng khi người dùng chưa bật MySQL (Tránh crash server)
 let memoryDB = {
     users: [
-        { id: 1, username: 'Hachimi', password: '123456', avatar: '🦊', gold: 250, gems: 10, xp: 80, level: 2, streak: 3, total_reps: 45, stage: 2 },
+        { id: 1, username: 'Hachimi', password: '123456', avatar: '🦊', gold: 0, gems: 0, xp: 80, level: 2, streak: 3, total_reps: 45, stage: 2 },
         { id: 2, username: 'ShadowBlade', password: '123456', avatar: '🥷', gold: 500, gems: 25, xp: 450, level: 5, streak: 7, total_reps: 210, stage: 4 },
         { id: 3, username: 'ValkyrieGym', password: '123456', avatar: '👑', gold: 900, gems: 40, xp: 950, level: 8, streak: 14, total_reps: 480, stage: 7 },
         { id: 4, username: 'IronTitan', password: '123456', avatar: '🗿', gold: 1400, gems: 60, xp: 1600, level: 12, streak: 21, total_reps: 850, stage: 10 },
@@ -142,7 +142,7 @@ app.post('/api/auth/register', async (req, res) => {
 
             const [result] = await pool.query(`
                 INSERT INTO users (username, password, avatar, gold, gems, xp, level, streak, total_reps, stage)
-                VALUES (?, ?, ?, 200, 10, 0, 1, 1, 0, 1)
+                VALUES (?, ?, ?, 0, 0, 0, 1, 1, 0, 1)
             `, [username, password, chosenAvatar]);
 
             const newUserId = result.insertId;
@@ -161,8 +161,8 @@ app.post('/api/auth/register', async (req, res) => {
                 username,
                 password,
                 avatar: chosenAvatar,
-                gold: 200,
-                gems: 10,
+                gold: 0,
+                gems: 0,
                 xp: 0,
                 level: 1,
                 streak: 1,
@@ -250,7 +250,7 @@ app.get('/api/user/:username', async (req, res) => {
         } else {
             let user = memoryDB.users.find(u => u.username === username);
             if (!user) {
-                user = { id: memoryDB.users.length + 1, username, gold: 100, gems: 5, xp: 0, level: 1, streak: 0, total_reps: 0, stage: 1 };
+                user = { id: memoryDB.users.length + 1, username, gold: 0, gems: 0, xp: 0, level: 1, streak: 0, total_reps: 0, stage: 1 };
                 memoryDB.users.push(user);
             }
             const inventory = memoryDB.inventory

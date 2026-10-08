@@ -52,5 +52,8 @@ data class WorkoutReward(
     val newGold: Int,
     val newXp: Int,
     val newStreak: Int,
-    val droppedItem: Item? = null
+    val droppedItem: Item? = null,
+    val gemsEarned: Int = 0,
+    val newGems: Int = 0,
+    val isBossFirstClear: Boolean = false
 )
