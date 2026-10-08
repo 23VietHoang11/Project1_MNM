@@ -26,9 +26,20 @@ let useFallback = false;
 
 // Dữ liệu bộ nhớ tạm phòng khi người dùng chưa bật MySQL (Tránh crash server)
 let memoryDB = {
-    users: [{ id: 1, username: 'Hachimi', gold: 200, gems: 10, xp: 0, level: 1, streak: 1, total_reps: 0, stage: 1 }],
+    users: [
+        { id: 1, username: 'Hachimi', password: '123456', avatar: '🦊', gold: 250, gems: 10, xp: 80, level: 2, streak: 3, total_reps: 45, stage: 2 },
+        { id: 2, username: 'ShadowBlade', password: '123456', avatar: '🥷', gold: 500, gems: 25, xp: 450, level: 5, streak: 7, total_reps: 210, stage: 4 },
+        { id: 3, username: 'ValkyrieGym', password: '123456', avatar: '👑', gold: 900, gems: 40, xp: 950, level: 8, streak: 14, total_reps: 480, stage: 7 },
+        { id: 4, username: 'IronTitan', password: '123456', avatar: '🗿', gold: 1400, gems: 60, xp: 1600, level: 12, streak: 21, total_reps: 850, stage: 10 },
+        { id: 5, username: 'DragonFit', password: '123456', avatar: '🐉', gold: 300, gems: 15, xp: 250, level: 3, streak: 5, total_reps: 120, stage: 3 },
+        { id: 6, username: 'Phoenix', password: '123456', avatar: '🔥', gold: 750, gems: 30, xp: 720, level: 6, streak: 9, total_reps: 340, stage: 5 }
+    ],
     items: [],
     inventory: [{ id: 1, user_id: 1, item_id: 'helm_bronze', is_equipped: 1 }],
+    friends: [
+        { id: 1, user_id: 1, friend_id: 2 },
+        { id: 2, user_id: 2, friend_id: 1 }
+    ],
     workouts: []
 };
 
@@ -108,6 +119,111 @@ app.get('/api/health', (req, res) => {
         database: dbConfig.database,
         time: new Date().toISOString()
     });
+});
+
+// =========================================================================
+// 1. XÁC THỰC: ĐĂNG KÝ & ĐĂNG NHẬP
+// =========================================================================
+
+// A. ĐĂNG KÝ TÀI KHOẢN MỚI
+app.post('/api/auth/register', async (req, res) => {
+    const { username, password, avatar } = req.body;
+    if (!username || !password) {
+        return res.status(400).json({ success: false, error: 'Vui lòng nhập tên tài khoản và mật khẩu!' });
+    }
+    const chosenAvatar = avatar || '🧑‍🎤';
+
+    try {
+        if (!useFallback) {
+            const [existing] = await pool.query('SELECT id FROM users WHERE username = ?', [username]);
+            if (existing.length > 0) {
+                return res.status(400).json({ success: false, error: 'Tên tài khoản đã tồn tại, vui lòng chọn tên khác!' });
+            }
+
+            const [result] = await pool.query(`
+                INSERT INTO users (username, password, avatar, gold, gems, xp, level, streak, total_reps, stage)
+                VALUES (?, ?, ?, 200, 10, 0, 1, 1, 0, 1)
+            `, [username, password, chosenAvatar]);
+
+            const newUserId = result.insertId;
+            // Tặng mũ đồng cơ bản
+            await pool.query('INSERT INTO user_inventory (user_id, item_id, is_equipped) VALUES (?, "helm_bronze", TRUE)', [newUserId]);
+
+            const [users] = await pool.query('SELECT id, username, avatar, gold, gems, xp, level, streak, total_reps, stage FROM users WHERE id = ?', [newUserId]);
+            return res.json({ success: true, message: 'Đăng ký thành công!', user: users[0] });
+        } else {
+            const exists = memoryDB.users.some(u => u.username.toLowerCase() === username.toLowerCase());
+            if (exists) {
+                return res.status(400).json({ success: false, error: 'Tên tài khoản đã tồn tại, vui lòng chọn tên khác!' });
+            }
+            const newUser = {
+                id: memoryDB.users.length + 1,
+                username,
+                password,
+                avatar: chosenAvatar,
+                gold: 200,
+                gems: 10,
+                xp: 0,
+                level: 1,
+                streak: 1,
+                total_reps: 0,
+                stage: 1
+            };
+            memoryDB.users.push(newUser);
+            memoryDB.inventory.push({ id: memoryDB.inventory.length + 1, user_id: newUser.id, item_id: 'helm_bronze', is_equipped: 1 });
+            return res.json({ success: true, message: 'Đăng ký thành công!', user: newUser });
+        }
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// B. ĐĂNG NHẬP
+app.post('/api/auth/login', async (req, res) => {
+    const { username, password } = req.body;
+    if (!username || !password) {
+        return res.status(400).json({ success: false, error: 'Vui lòng nhập tên tài khoản và mật khẩu!' });
+    }
+
+    try {
+        if (!useFallback) {
+            const [users] = await pool.query('SELECT * FROM users WHERE username = ?', [username]);
+            if (users.length === 0) {
+                return res.status(404).json({ success: false, error: 'Tài khoản không tồn tại!' });
+            }
+            const user = users[0];
+            if (user.password && user.password !== password) {
+                return res.status(401).json({ success: false, error: 'Mật khẩu không chính xác!' });
+            }
+            return res.json({
+                success: true,
+                message: 'Đăng nhập thành công!',
+                user: {
+                    id: user.id,
+                    username: user.username,
+                    avatar: user.avatar || '🧑‍🎤',
+                    gold: user.gold,
+                    gems: user.gems,
+                    xp: user.xp,
+                    level: user.level,
+                    streak: user.streak,
+                    total_reps: user.total_reps,
+                    stage: user.stage
+                }
+            });
+        } else {
+            const user = memoryDB.users.find(u => u.username.toLowerCase() === username.toLowerCase());
+            if (!user) {
+                return res.status(404).json({ success: false, error: 'Tài khoản không tồn tại!' });
+            }
+            if (user.password && user.password !== password) {
+                return res.status(401).json({ success: false, error: 'Mật khẩu không chính xác!' });
+            }
+            return res.json({ success: true, message: 'Đăng nhập thành công!', user });
+        }
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
 });
 
 // 2. Lấy thông tin người chơi, chỉ số, và kho đồ
@@ -412,6 +528,212 @@ app.post('/api/workout/finish', async (req, res) => {
             newStreak,
             droppedItem // Trả về vật phẩm vừa rớt (nếu có)
         });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// =========================================================================
+// 8. BẠN BÈ & BẢNG XẾP HẠNG THẾ GIỚI
+// =========================================================================
+
+// A. THÊM BẠN BÈ BẰNG TÊN TÀI KHOẢN
+app.post('/api/friends/add', async (req, res) => {
+    const { username, friendUsername } = req.body;
+    if (!username || !friendUsername) return res.status(400).json({ success: false, error: 'Thiếu thông tin người chơi!' });
+    if (username.toLowerCase() === friendUsername.toLowerCase()) {
+        return res.status(400).json({ success: false, error: 'Không thể kết bạn với chính mình!' });
+    }
+
+    try {
+        if (!useFallback) {
+            const [users] = await pool.query('SELECT id FROM users WHERE username = ?', [username]);
+            const [friends] = await pool.query('SELECT id FROM users WHERE username = ?', [friendUsername]);
+            if (users.length === 0 || friends.length === 0) {
+                return res.status(404).json({ success: false, error: 'Không tìm thấy người chơi "' + friendUsername + '"!' });
+            }
+            const userId = users[0].id;
+            const friendId = friends[0].id;
+
+            // Kiểm tra đã là bạn chưa
+            const [existing] = await pool.query('SELECT id FROM friends WHERE user_id = ? AND friend_id = ?', [userId, friendId]);
+            if (existing.length > 0) {
+                return res.status(400).json({ success: false, error: 'Hai bạn đã là bạn bè từ trước!' });
+            }
+
+            // Kết bạn hai chiều
+            await pool.query('INSERT IGNORE INTO friends (user_id, friend_id) VALUES (?, ?), (?, ?)', [userId, friendId, friendId, userId]);
+            return res.json({ success: true, message: 'Đã kết bạn thành công với ' + friendUsername + '!' });
+        } else {
+            const user = memoryDB.users.find(u => u.username.toLowerCase() === username.toLowerCase());
+            const friend = memoryDB.users.find(u => u.username.toLowerCase() === friendUsername.toLowerCase());
+            if (!user || !friend) return res.status(404).json({ success: false, error: 'Không tìm thấy người chơi "' + friendUsername + '"!' });
+
+            if (!memoryDB.friends) memoryDB.friends = [];
+            const alreadyFriend = memoryDB.friends.some(f => f.user_id === user.id && f.friend_id === friend.id);
+            if (alreadyFriend) return res.status(400).json({ success: false, error: 'Hai bạn đã là bạn bè từ trước!' });
+
+            memoryDB.friends.push({ id: memoryDB.friends.length + 1, user_id: user.id, friend_id: friend.id });
+            memoryDB.friends.push({ id: memoryDB.friends.length + 1, user_id: friend.id, friend_id: user.id });
+            return res.json({ success: true, message: 'Đã kết bạn thành công với ' + friendUsername + '!' });
+        }
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// B. LẤY DANH SÁCH BẠN BÈ
+app.get('/api/friends/:username', async (req, res) => {
+    const { username } = req.params;
+    try {
+        if (!useFallback) {
+            const [users] = await pool.query('SELECT id FROM users WHERE username = ?', [username]);
+            if (users.length === 0) return res.status(404).json({ error: 'Không tìm thấy người chơi' });
+            const userId = users[0].id;
+
+            const [rows] = await pool.query(`
+                SELECT u.id, u.username, u.avatar, u.level, u.streak, u.total_reps,
+                    (50 + u.total_reps * 25 + u.level * 30) AS combat_power
+                FROM friends f
+                JOIN users u ON f.friend_id = u.id
+                WHERE f.user_id = ?
+                ORDER BY combat_power DESC
+            `, [userId]);
+            return res.json({ success: true, friends: rows });
+        } else {
+            const user = memoryDB.users.find(u => u.username.toLowerCase() === username.toLowerCase());
+            if (!user) return res.status(404).json({ error: 'Không tìm thấy người chơi' });
+            if (!memoryDB.friends) memoryDB.friends = [];
+
+            const friendIds = memoryDB.friends.filter(f => f.user_id === user.id).map(f => f.friend_id);
+            const friends = memoryDB.users
+                .filter(u => friendIds.includes(u.id))
+                .map(u => ({
+                    id: u.id,
+                    username: u.username,
+                    avatar: u.avatar || '🧑‍🎤',
+                    level: u.level,
+                    streak: u.streak,
+                    total_reps: u.total_reps,
+                    combat_power: 50 + u.total_reps * 25 + u.level * 30
+                }));
+            return res.json({ success: true, friends });
+        }
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// C. HỦY KẾT BẠN
+app.post('/api/friends/remove', async (req, res) => {
+    const { username, friendUsername } = req.body;
+    try {
+        if (!useFallback) {
+            const [users] = await pool.query('SELECT id FROM users WHERE username = ?', [username]);
+            const [friends] = await pool.query('SELECT id FROM users WHERE username = ?', [friendUsername]);
+            if (users.length === 0 || friends.length === 0) return res.status(404).json({ error: 'Không tìm thấy người chơi' });
+
+            await pool.query('DELETE FROM friends WHERE (user_id = ? AND friend_id = ?) OR (user_id = ? AND friend_id = ?)', 
+                [users[0].id, friends[0].id, friends[0].id, users[0].id]);
+            return res.json({ success: true, message: 'Đã hủy kết bạn!' });
+        } else {
+            const user = memoryDB.users.find(u => u.username.toLowerCase() === username.toLowerCase());
+            const friend = memoryDB.users.find(u => u.username.toLowerCase() === friendUsername.toLowerCase());
+            if (!user || !friend) return res.status(404).json({ error: 'Không tìm thấy người chơi' });
+
+            if (memoryDB.friends) {
+                memoryDB.friends = memoryDB.friends.filter(f => !( (f.user_id === user.id && f.friend_id === friend.id) || (f.user_id === friend.id && f.friend_id === user.id) ));
+            }
+            return res.json({ success: true, message: 'Đã hủy kết bạn!' });
+        }
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// D. BẢNG XẾP HẠNG THẾ GIỚI (World Leaderboard theo Lực Chiến, Cấp Độ, Reps, Streak)
+app.get('/api/leaderboard', async (req, res) => {
+    const { username, sortBy = 'CP' } = req.query;
+    try {
+        if (!useFallback) {
+            let orderClause = 'combat_power DESC';
+            if (sortBy === 'LEVEL') orderClause = 'u.level DESC, combat_power DESC';
+            else if (sortBy === 'REPS') orderClause = 'u.total_reps DESC, combat_power DESC';
+            else if (sortBy === 'STREAK') orderClause = 'u.streak DESC, combat_power DESC';
+
+            let currentUserId = null;
+            if (username) {
+                const [users] = await pool.query('SELECT id FROM users WHERE username = ?', [username]);
+                if (users.length > 0) currentUserId = users[0].id;
+            }
+
+            const [rows] = await pool.query(`
+                SELECT u.id, u.username, u.avatar, u.level, u.streak, u.total_reps,
+                    (50 + u.total_reps * 25 + u.level * 30) AS combat_power,
+                    CASE 
+                        WHEN u.level < 3 THEN 'Tân Binh'
+                        WHEN u.level < 6 THEN 'Võ Tăng'
+                        WHEN u.level < 10 THEN 'Chiến Binh'
+                        ELSE 'Huyền Thoại'
+                    END AS title,
+                    ${currentUserId ? `(EXISTS (SELECT 1 FROM friends WHERE user_id = ${currentUserId} AND friend_id = u.id))` : 'FALSE'} AS is_friend,
+                    ${currentUserId ? `(u.id = ${currentUserId})` : 'FALSE'} AS is_current_user
+                FROM users u
+                ORDER BY ${orderClause}
+                LIMIT 50
+            `);
+
+            const leaderboard = rows.map((r, idx) => ({
+                rank: idx + 1,
+                id: r.id,
+                username: r.username,
+                avatar: r.avatar || '🧑‍🎤',
+                level: r.level,
+                combatPower: r.combat_power,
+                totalReps: r.total_reps,
+                streak: r.streak,
+                title: r.title,
+                isFriend: Boolean(r.is_friend),
+                isCurrentUser: Boolean(r.is_current_user)
+            }));
+
+            return res.json({ success: true, sortBy, leaderboard });
+        } else {
+            let currentUserId = null;
+            if (username) {
+                const found = memoryDB.users.find(u => u.username.toLowerCase() === username.toLowerCase());
+                if (found) currentUserId = found.id;
+            }
+
+            let sorted = [...memoryDB.users].map(u => ({
+                ...u,
+                combat_power: 50 + u.total_reps * 25 + u.level * 30,
+                title: u.level < 3 ? 'Tân Binh' : u.level < 6 ? 'Võ Tăng' : u.level < 10 ? 'Chiến Binh' : 'Huyền Thoại',
+                is_friend: currentUserId && memoryDB.friends ? memoryDB.friends.some(f => f.user_id === currentUserId && f.friend_id === u.id) : false,
+                is_current_user: currentUserId ? u.id === currentUserId : false
+            }));
+
+            if (sortBy === 'LEVEL') sorted.sort((a, b) => b.level - a.level || b.combat_power - a.combat_power);
+            else if (sortBy === 'REPS') sorted.sort((a, b) => b.total_reps - a.total_reps || b.combat_power - a.combat_power);
+            else if (sortBy === 'STREAK') sorted.sort((a, b) => b.streak - a.streak || b.combat_power - a.combat_power);
+            else sorted.sort((a, b) => b.combat_power - a.combat_power);
+
+            const leaderboard = sorted.map((u, idx) => ({
+                rank: idx + 1,
+                id: u.id,
+                username: u.username,
+                avatar: u.avatar || '🧑‍🎤',
+                level: u.level,
+                combatPower: u.combat_power,
+                totalReps: u.total_reps,
+                streak: u.streak,
+                title: u.title,
+                isFriend: Boolean(u.is_friend),
+                isCurrentUser: Boolean(u.is_current_user)
+            }));
+
+            return res.json({ success: true, sortBy, leaderboard });
+        }
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

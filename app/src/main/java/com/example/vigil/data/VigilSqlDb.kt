@@ -5,10 +5,13 @@ import android.content.Context
 import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
+import com.example.vigil.model.FriendProfile
 import com.example.vigil.model.InventoryItem
 import com.example.vigil.model.Item
 import com.example.vigil.model.ItemSlot
+import com.example.vigil.model.LeaderboardEntry
 import com.example.vigil.model.Rarity
+import com.example.vigil.model.UserProfile
 import com.example.vigil.model.WorkoutReward
 import java.time.LocalDate
 import kotlin.math.min
@@ -22,7 +25,7 @@ class VigilSqlDb(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, nu
 
     companion object {
         const val DATABASE_NAME = "vigil_app.db"
-        const val DATABASE_VERSION = 1
+        const val DATABASE_VERSION = 2
 
         @Volatile
         private var INSTANCE: VigilSqlDb? = null
@@ -34,12 +37,14 @@ class VigilSqlDb(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, nu
     }
 
     override fun onCreate(db: SQLiteDatabase) {
-        // 1. Bảng users
+        // 1. Bảng users (Hỗ trợ xác thực đăng ký & đăng nhập)
         db.execSQL("""
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 username TEXT UNIQUE NOT NULL,
-                gold INTEGER NOT NULL DEFAULT 150,
+                password TEXT NOT NULL DEFAULT '123456',
+                avatar TEXT NOT NULL DEFAULT '🧑‍🎤',
+                gold INTEGER NOT NULL DEFAULT 200,
                 gems INTEGER NOT NULL DEFAULT 10,
                 xp INTEGER NOT NULL DEFAULT 0,
                 level INTEGER NOT NULL DEFAULT 1,
@@ -97,42 +102,111 @@ class VigilSqlDb(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, nu
             );
         """.trimIndent())
 
+        // 5. Bảng friends (Kết bạn giữa các người chơi bằng tên)
+        db.execSQL("""
+            CREATE TABLE IF NOT EXISTS friends (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                friend_id INTEGER NOT NULL,
+                created_at TEXT,
+                UNIQUE(user_id, friend_id),
+                FOREIGN KEY (user_id) REFERENCES users(id),
+                FOREIGN KEY (friend_id) REFERENCES users(id)
+            );
+        """.trimIndent())
+
         // Nạp dữ liệu mặc định ban đầu
         seedItems(db)
         seedInitialUser(db)
+        seedSampleLeaderboardUsers(db)
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        db.execSQL("DROP TABLE IF EXISTS workouts")
-        db.execSQL("DROP TABLE IF EXISTS user_inventory")
-        db.execSQL("DROP TABLE IF EXISTS items")
-        db.execSQL("DROP TABLE IF EXISTS users")
-        onCreate(db)
+        if (oldVersion < 2) {
+            try { db.execSQL("ALTER TABLE users ADD COLUMN password TEXT NOT NULL DEFAULT '123456'") } catch (e: Exception) {}
+            try { db.execSQL("ALTER TABLE users ADD COLUMN avatar TEXT NOT NULL DEFAULT '🧑‍🎤'") } catch (e: Exception) {}
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS friends (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    friend_id INTEGER NOT NULL,
+                    created_at TEXT,
+                    UNIQUE(user_id, friend_id),
+                    FOREIGN KEY (user_id) REFERENCES users(id),
+                    FOREIGN KEY (friend_id) REFERENCES users(id)
+                );
+            """.trimIndent())
+            seedSampleLeaderboardUsers(db)
+        }
     }
 
     private fun seedInitialUser(db: SQLiteDatabase) {
         val cv = ContentValues().apply {
             put("id", 1)
             put("username", "Hachimi")
-            put("gold", 250)
-            put("gems", 10)
-            put("xp", 0)
-            put("level", 1)
-            put("streak", 1)
-            put("total_reps", 0)
-            put("stage", 1)
+            put("password", "123456")
+            put("avatar", "🦊")
+            put("gold", 350)
+            put("gems", 15)
+            put("xp", 120)
+            put("level", 5)
+            put("streak", 4)
+            put("total_reps", 160)
+            put("stage", 3)
             put("last_workout_date", LocalDate.now().toString())
         }
         db.insertWithOnConflict("users", null, cv, SQLiteDatabase.CONFLICT_IGNORE)
 
-        // Tặng tân binh 1 mũ đồng và 1 thanh kiếm thép cơ bản
+        // Tặng tân binh 1 mũ đồng và găng tay cơ bản
         val invCv = ContentValues().apply {
             put("user_id", 1)
             put("item_id", "helm_bronze")
             put("is_equipped", 1)
             put("acquired_at", LocalDate.now().toString())
         }
-        db.insert("user_inventory", null, invCv)
+        db.insertWithOnConflict("user_inventory", null, invCv, SQLiteDatabase.CONFLICT_IGNORE)
+    }
+
+    private fun seedSampleLeaderboardUsers(db: SQLiteDatabase) {
+        val sampleUsers = listOf(
+            Triple("ShadowBlade", 9 to 380, Triple("🥷", 12, 850)),
+            Triple("ValkyrieGym", 8 to 310, Triple("👑", 8, 700)),
+            Triple("IronTitan", 7 to 260, Triple("🗿", 5, 450)),
+            Triple("DragonFit", 6 to 190, Triple("🐉", 4, 320)),
+            Triple("Phoenix", 4 to 110, Triple("🔥", 2, 220))
+        )
+
+        sampleUsers.forEachIndexed { idx, (uname, stats, extra) ->
+            val uCv = ContentValues().apply {
+                put("id", idx + 2)
+                put("username", uname)
+                put("password", "123456")
+                put("avatar", extra.first)
+                put("gold", extra.third)
+                put("gems", 10)
+                put("xp", 60)
+                put("level", stats.first)
+                put("streak", extra.second)
+                put("total_reps", stats.second)
+                put("stage", stats.first - 1)
+                put("last_workout_date", LocalDate.now().toString())
+            }
+            db.insertWithOnConflict("users", null, uCv, SQLiteDatabase.CONFLICT_IGNORE)
+        }
+
+        // Tạo sẵn mối quan hệ bạn bè mẫu cho Hachimi với IronTitan (ID 4)
+        val f1 = ContentValues().apply {
+            put("user_id", 1)
+            put("friend_id", 4)
+            put("created_at", LocalDate.now().toString())
+        }
+        val f2 = ContentValues().apply {
+            put("user_id", 4)
+            put("friend_id", 1)
+            put("created_at", LocalDate.now().toString())
+        }
+        db.insertWithOnConflict("friends", null, f1, SQLiteDatabase.CONFLICT_IGNORE)
+        db.insertWithOnConflict("friends", null, f2, SQLiteDatabase.CONFLICT_IGNORE)
     }
 
     private fun seedItems(db: SQLiteDatabase) {
@@ -493,5 +567,305 @@ class VigilSqlDb(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, nu
             description = c.getString(c.getColumnIndexOrThrow("description")) ?: "",
             icon = c.getString(c.getColumnIndexOrThrow("icon")) ?: "⚔️"
         )
+    }
+
+    // =========================================================================
+    // XÁC THỰC: ĐĂNG KÝ, ĐĂNG NHẬP & QUẢN LÝ TÀI KHOẢN
+    // =========================================================================
+
+    /**
+     * Đăng ký tài khoản mới.
+     * Kiểm tra trùng tên, nếu chưa có thì tạo mới và cấp trang bị tân thủ.
+     */
+    fun registerUser(username: String, password: String, avatar: String = "🧑‍🎤"): Pair<Boolean, String> {
+        val trimmed = username.trim()
+        if (trimmed.length < 3) return Pair(false, "Tên tài khoản phải có ít nhất 3 ký tự!")
+        if (password.length < 4) return Pair(false, "Mật khẩu phải có ít nhất 4 ký tự!")
+
+        val db = writableDatabase
+        val checkCursor = db.rawQuery("SELECT id FROM users WHERE LOWER(username) = LOWER(?)", arrayOf(trimmed))
+        val exists = checkCursor.moveToFirst()
+        checkCursor.close()
+
+        if (exists) {
+            return Pair(false, "Tên tài khoản '$trimmed' đã có người sử dụng!")
+        }
+
+        val cv = ContentValues().apply {
+            put("username", trimmed)
+            put("password", password)
+            put("avatar", avatar)
+            put("gold", 250)
+            put("gems", 10)
+            put("xp", 0)
+            put("level", 1)
+            put("streak", 1)
+            put("total_reps", 0)
+            put("stage", 1)
+            put("last_workout_date", LocalDate.now().toString())
+        }
+        val newId = db.insert("users", null, cv)
+        if (newId != -1L) {
+            // Cấp trang bị khởi đầu
+            val invCv = ContentValues().apply {
+                put("user_id", newId.toInt())
+                put("item_id", "helm_bronze")
+                put("is_equipped", 1)
+                put("acquired_at", LocalDate.now().toString())
+            }
+            db.insert("user_inventory", null, invCv)
+            return Pair(true, "Đăng ký thành công! Chào mừng hiệp sĩ $trimmed!")
+        } else {
+            return Pair(false, "Lỗi cơ sở dữ liệu khi tạo tài khoản!")
+        }
+    }
+
+    /**
+     * Đăng nhập bằng tài khoản và mật khẩu.
+     * Trả về Pair(userId, thông báo).
+     */
+    fun loginUser(username: String, password: String): Pair<Int?, String> {
+        val trimmed = username.trim()
+        val db = readableDatabase
+        val cursor = db.rawQuery("SELECT id, password FROM users WHERE LOWER(username) = LOWER(?)", arrayOf(trimmed))
+        if (!cursor.moveToFirst()) {
+            cursor.close()
+            return Pair(null, "Không tìm thấy tài khoản '$trimmed'!")
+        }
+
+        val id = cursor.getInt(cursor.getColumnIndexOrThrow("id"))
+        val storedPw = cursor.getString(cursor.getColumnIndexOrThrow("password"))
+        cursor.close()
+
+        return if (storedPw == password) {
+            Pair(id, "Đăng nhập thành công! Chào mừng trở lại!")
+        } else {
+            Pair(null, "Mật khẩu không chính xác!")
+        }
+    }
+
+    fun getUserProfile(userId: Int): UserProfile? {
+        val db = readableDatabase
+        val cursor = db.rawQuery("SELECT * FROM users WHERE id = ?", arrayOf(userId.toString()))
+        if (!cursor.moveToFirst()) {
+            cursor.close()
+            return null
+        }
+        val p = parseUserProfile(cursor)
+        cursor.close()
+        return p
+    }
+
+    fun getUserProfileByUsername(username: String): UserProfile? {
+        val db = readableDatabase
+        val cursor = db.rawQuery("SELECT * FROM users WHERE LOWER(username) = LOWER(?)", arrayOf(username.trim()))
+        if (!cursor.moveToFirst()) {
+            cursor.close()
+            return null
+        }
+        val p = parseUserProfile(cursor)
+        cursor.close()
+        return p
+    }
+
+    private fun parseUserProfile(cursor: Cursor): UserProfile {
+        val level = cursor.getInt(cursor.getColumnIndexOrThrow("level"))
+        val title = when {
+            level < 3 -> "Tân Binh"
+            level < 6 -> "Võ Tăng"
+            level < 10 -> "Chiến Binh"
+            else -> "Huyền Thoại"
+        }
+        return UserProfile(
+            id = cursor.getInt(cursor.getColumnIndexOrThrow("id")),
+            username = cursor.getString(cursor.getColumnIndexOrThrow("username")),
+            gold = cursor.getInt(cursor.getColumnIndexOrThrow("gold")),
+            gems = cursor.getInt(cursor.getColumnIndexOrThrow("gems")),
+            xp = cursor.getInt(cursor.getColumnIndexOrThrow("xp")),
+            level = level,
+            streak = cursor.getInt(cursor.getColumnIndexOrThrow("streak")),
+            totalReps = cursor.getInt(cursor.getColumnIndexOrThrow("total_reps")),
+            stage = cursor.getInt(cursor.getColumnIndexOrThrow("stage")),
+            avatar = cursor.getString(cursor.getColumnIndexOrThrow("avatar")) ?: "🧑‍🎤",
+            title = title
+        )
+    }
+
+    // =========================================================================
+    // HỆ THỐNG BẠN BÈ (KẾT BẠN BẰNG TÊN)
+    // =========================================================================
+
+    /**
+     * Kết bạn với người chơi khác dựa trên Username.
+     */
+    fun addFriendByUsername(currentUserId: Int, friendUsername: String): Pair<Boolean, String> {
+        val targetName = friendUsername.trim()
+        val db = writableDatabase
+
+        // Tìm người dùng mục tiêu
+        val targetCursor = db.rawQuery("SELECT id, username FROM users WHERE LOWER(username) = LOWER(?)", arrayOf(targetName))
+        if (!targetCursor.moveToFirst()) {
+            targetCursor.close()
+            return Pair(false, "Không tìm thấy người chơi có tên '$targetName'!")
+        }
+        val friendId = targetCursor.getInt(targetCursor.getColumnIndexOrThrow("id"))
+        val canonicalName = targetCursor.getString(targetCursor.getColumnIndexOrThrow("username"))
+        targetCursor.close()
+
+        if (friendId == currentUserId) {
+            return Pair(false, "Bạn không thể tự kết bạn với chính mình!")
+        }
+
+        // Kiểm tra đã là bạn bè chưa
+        val checkCursor = db.rawQuery(
+            "SELECT id FROM friends WHERE user_id = ? AND friend_id = ?",
+            arrayOf(currentUserId.toString(), friendId.toString())
+        )
+        val alreadyFriends = checkCursor.moveToFirst()
+        checkCursor.close()
+
+        if (alreadyFriends) {
+            return Pair(false, "Bạn và '$canonicalName' đã là bạn bè rồi!")
+        }
+
+        // Tạo quan hệ bạn bè 2 chiều
+        val nowStr = LocalDate.now().toString()
+        val f1 = ContentValues().apply {
+            put("user_id", currentUserId)
+            put("friend_id", friendId)
+            put("created_at", nowStr)
+        }
+        val f2 = ContentValues().apply {
+            put("user_id", friendId)
+            put("friend_id", currentUserId)
+            put("created_at", nowStr)
+        }
+        db.insertWithOnConflict("friends", null, f1, SQLiteDatabase.CONFLICT_REPLACE)
+        db.insertWithOnConflict("friends", null, f2, SQLiteDatabase.CONFLICT_REPLACE)
+
+        return Pair(true, "Đã kết bạn thành công với $canonicalName! 🤝")
+    }
+
+    /**
+     * Lấy danh sách bạn bè của người dùng hiện tại kèm theo chỉ số.
+     */
+    fun getFriends(userId: Int): List<FriendProfile> {
+        val list = mutableListOf<FriendProfile>()
+        val db = readableDatabase
+        val query = """
+            SELECT u.id, u.username, u.level, u.total_reps, u.streak, u.avatar
+            FROM friends f
+            JOIN users u ON f.friend_id = u.id
+            WHERE f.user_id = ?
+            ORDER BY u.level DESC, u.total_reps DESC
+        """.trimIndent()
+        val cursor = db.rawQuery(query, arrayOf(userId.toString()))
+        while (cursor.moveToNext()) {
+            val fId = cursor.getInt(0)
+            val uname = cursor.getString(1)
+            val lvl = cursor.getInt(2)
+            val reps = cursor.getInt(3)
+            val strk = cursor.getInt(4)
+            val avt = cursor.getString(5) ?: "🧑‍🎤"
+
+            // Tính Lực Chiến CP
+            val cp = ((5 + reps / 3) * 10) + ((5 + reps / 4) * 8) + ((5 + reps / 3) * 9) + ((5 + reps / 5) * 6) + (lvl * 30)
+            val title = when {
+                lvl < 3 -> "Tân Binh"
+                lvl < 6 -> "Võ Tăng"
+                lvl < 10 -> "Chiến Binh"
+                else -> "Huyền Thoại"
+            }
+
+            list.add(FriendProfile(
+                id = fId,
+                username = uname,
+                level = lvl,
+                combatPower = cp,
+                totalReps = reps,
+                streak = strk,
+                avatar = avt,
+                title = title,
+                isOnline = true
+            ))
+        }
+        cursor.close()
+        return list
+    }
+
+    fun removeFriend(userId: Int, friendId: Int): Boolean {
+        val db = writableDatabase
+        db.delete("friends", "(user_id = ? AND friend_id = ?) OR (user_id = ? AND friend_id = ?)",
+            arrayOf(userId.toString(), friendId.toString(), friendId.toString(), userId.toString()))
+        return true
+    }
+
+    // =========================================================================
+    // BẢNG XẾP HẠNG THẾ GIỚI (WORLD LEADERBOARD THEO CÁC MỤC SỐ LIỆU)
+    // =========================================================================
+
+    /**
+     * Lấy bảng xếp hạng người chơi toàn cầu theo tiêu chí:
+     * - "CP": Lực chiến
+     * - "LEVEL": Cấp độ
+     * - "REPS": Tổng số Reps thể lực
+     * - "STREAK": Chuỗi ngày kiên trì
+     */
+    fun getLeaderboard(currentUserId: Int, sortBy: String = "CP"): List<LeaderboardEntry> {
+        val db = readableDatabase
+        val friendIds = mutableSetOf<Int>()
+        val fCursor = db.rawQuery("SELECT friend_id FROM friends WHERE user_id = ?", arrayOf(currentUserId.toString()))
+        while (fCursor.moveToNext()) {
+            friendIds.add(fCursor.getInt(0))
+        }
+        fCursor.close()
+
+        val allUsers = mutableListOf<LeaderboardEntry>()
+        val cursor = db.rawQuery("SELECT id, username, level, xp, total_reps, streak, avatar FROM users", null)
+        while (cursor.moveToNext()) {
+            val uId = cursor.getInt(0)
+            val uname = cursor.getString(1)
+            val lvl = cursor.getInt(2)
+            val reps = cursor.getInt(4)
+            val strk = cursor.getInt(5)
+            val avt = cursor.getString(6) ?: "🧑‍🎤"
+
+            val cp = ((5 + reps / 3) * 10) + ((5 + reps / 4) * 8) + ((5 + reps / 3) * 9) + ((5 + reps / 5) * 6) + (lvl * 30)
+            val title = when {
+                lvl < 3 -> "Tân Binh"
+                lvl < 6 -> "Võ Tăng"
+                lvl < 10 -> "Chiến Binh"
+                else -> "Huyền Thoại"
+            }
+
+            allUsers.add(
+                LeaderboardEntry(
+                    rank = 0,
+                    id = uId,
+                    username = uname,
+                    level = lvl,
+                    combatPower = cp,
+                    totalReps = reps,
+                    streak = strk,
+                    avatar = avt,
+                    title = title,
+                    isFriend = friendIds.contains(uId),
+                    isCurrentUser = (uId == currentUserId)
+                )
+            )
+        }
+        cursor.close()
+
+        // Sắp xếp theo tiêu chí được chọn
+        val sorted = when (sortBy.uppercase()) {
+            "LEVEL" -> allUsers.sortedWith(compareByDescending<LeaderboardEntry> { it.level }.thenByDescending { it.combatPower })
+            "REPS" -> allUsers.sortedWith(compareByDescending<LeaderboardEntry> { it.totalReps }.thenByDescending { it.combatPower })
+            "STREAK" -> allUsers.sortedWith(compareByDescending<LeaderboardEntry> { it.streak }.thenByDescending { it.combatPower })
+            else -> allUsers.sortedWith(compareByDescending<LeaderboardEntry> { it.combatPower }.thenByDescending { it.level })
+        }
+
+        return sorted.mapIndexed { index, entry ->
+            entry.copy(rank = index + 1)
+        }
     }
 }

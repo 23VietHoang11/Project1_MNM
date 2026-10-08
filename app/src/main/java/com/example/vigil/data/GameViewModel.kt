@@ -1,15 +1,18 @@
 package com.example.vigil.data
 
 import android.app.Application
+import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.vigil.model.FriendProfile
 import com.example.vigil.model.InventoryItem
 import com.example.vigil.model.Item
 import com.example.vigil.model.ItemSlot
+import com.example.vigil.model.LeaderboardEntry
 import com.example.vigil.model.WorkoutReward
 import com.example.vigil.network.ApiClient
 import com.example.vigil.pose.Exercise
@@ -18,12 +21,17 @@ import java.time.LocalDate
 
 /**
  * ViewModel kết hợp CSDL SQL cục bộ (SQLite) và Backend REST API (MySQL).
- * Quản lý trạng thái Anh Hùng, Cửa Hàng, Trang Bị, và Tỷ Lệ Rớt Đồ.
+ * Quản lý trạng thái Xác Thực, Bạn Bè, Bảng Xếp Hạng Thế Giới, Cửa Hàng, Trang Bị, và Tỷ Lệ Rớt Đồ.
  */
 class GameViewModel(app: Application) : AndroidViewModel(app) {
     private val db = VigilSqlDb.get(app)
+    private val prefs = app.getSharedPreferences("vigil_auth", Context.MODE_PRIVATE)
 
+    // Trạng thái tài khoản người dùng
+    var currentUserId by mutableIntStateOf(1)
+    var isLoggedIn by mutableStateOf(false)
     var name by mutableStateOf("Hachimi")
+    var avatar by mutableStateOf("🦊")
     var gold by mutableIntStateOf(250)
     var gems by mutableIntStateOf(10)
     var xp by mutableIntStateOf(0)
@@ -33,6 +41,11 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
     var todayReps by mutableIntStateOf(0)
     var stage by mutableIntStateOf(1)
 
+    // Danh sách Bạn Bè & Bảng Xếp Hạng Thế Giới
+    var friendsList by mutableStateOf<List<FriendProfile>>(emptyList())
+    var leaderboardList by mutableStateOf<List<LeaderboardEntry>>(emptyList())
+    var leaderboardSortBy by mutableStateOf("CP") // "CP", "LEVEL", "REPS", "STREAK"
+
     // Danh sách Cửa Hàng & Kho đồ
     var shopItems by mutableStateOf<List<Item>>(emptyList())
     var inventory by mutableStateOf<List<InventoryItem>>(emptyList())
@@ -40,8 +53,9 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
     // Phần thưởng vừa rớt từ trận đấu
     var lastReward by mutableStateOf<WorkoutReward?>(null)
 
-    // Trạng thái thông báo
+    // Trạng thái thông báo & Lỗi xác thực
     var toastMessage by mutableStateOf<String?>(null)
+    var authErrorMessage by mutableStateOf<String?>(null)
 
     val xpNeeded: Int get() = 80 + level * 160
     val title: String get() = when {
@@ -96,17 +110,41 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     init {
-        loadDataFromSql()
+        // Kiểm tra phiên đăng nhập đã lưu trong SharedPreferences
+        val savedUserId = prefs.getInt("logged_in_user_id", -1)
+        if (savedUserId != -1) {
+            val user = db.getUserProfile(savedUserId)
+            if (user != null) {
+                currentUserId = user.id
+                name = user.username
+                avatar = user.avatar
+                isLoggedIn = true
+                loadDataFromSql()
+            } else {
+                isLoggedIn = false
+            }
+        } else {
+            // Mặc định cho phép người dùng vào ngay tài khoản mẫu Hachimi nếu chưa đăng ký tài khoản riêng
+            val defaultUser = db.getUserProfile(1)
+            if (defaultUser != null) {
+                currentUserId = 1
+                name = defaultUser.username
+                avatar = defaultUser.avatar
+                isLoggedIn = true
+                loadDataFromSql()
+            }
+        }
     }
 
     fun loadDataFromSql() {
         shopItems = db.getAllItems()
-        inventory = db.getInventory(1)
+        inventory = db.getInventory(currentUserId)
 
         val readable = db.readableDatabase
-        val cursor = readable.rawQuery("SELECT * FROM users WHERE id = 1", null)
+        val cursor = readable.rawQuery("SELECT * FROM users WHERE id = ?", arrayOf(currentUserId.toString()))
         if (cursor.moveToFirst()) {
             name = cursor.getString(cursor.getColumnIndexOrThrow("username"))
+            avatar = cursor.getString(cursor.getColumnIndexOrThrow("avatar")) ?: "🧑‍🎤"
             gold = cursor.getInt(cursor.getColumnIndexOrThrow("gold"))
             gems = cursor.getInt(cursor.getColumnIndexOrThrow("gems"))
             xp = cursor.getInt(cursor.getColumnIndexOrThrow("xp"))
@@ -118,9 +156,107 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
         cursor.close()
 
         val todayStr = LocalDate.now().toString()
-        val wCursor = readable.rawQuery("SELECT SUM(reps) FROM workouts WHERE user_id = 1 AND created_at = ?", arrayOf(todayStr))
+        val wCursor = readable.rawQuery("SELECT SUM(reps) FROM workouts WHERE user_id = ? AND created_at = ?", arrayOf(currentUserId.toString(), todayStr))
         todayReps = if (wCursor.moveToFirst()) wCursor.getInt(0) else 0
         wCursor.close()
+
+        // Nạp danh sách Bạn Bè và Bảng Xếp Hạng Thế Giới
+        friendsList = db.getFriends(currentUserId)
+        leaderboardList = db.getLeaderboard(currentUserId, leaderboardSortBy)
+    }
+
+    // =========================================================================
+    // XÁC THỰC: ĐĂNG NHẬP, ĐĂNG KÝ & QUẢN LÝ PHIÊN
+    // =========================================================================
+
+    fun login(username: String, password: String): Boolean {
+        authErrorMessage = null
+        val (userId, msg) = db.loginUser(username, password)
+        if (userId != null) {
+            currentUserId = userId
+            isLoggedIn = true
+            prefs.edit().putInt("logged_in_user_id", userId).putString("username", username).apply()
+            loadDataFromSql()
+            toastMessage = "Đăng nhập thành công! Chào $name! ⚔️"
+
+            viewModelScope.launch {
+                ApiClient.login(username, password)
+            }
+            return true
+        } else {
+            authErrorMessage = msg
+            toastMessage = msg
+            return false
+        }
+    }
+
+    fun register(username: String, password: String, chosenAvatar: String = "🧑‍🎤"): Boolean {
+        authErrorMessage = null
+        val (success, msg) = db.registerUser(username, password, chosenAvatar)
+        if (success) {
+            // Tự động đăng nhập luôn sau khi đăng ký
+            login(username, password)
+            toastMessage = "Đăng ký thành công! Chào mừng hiệp sĩ $username! 🎉"
+            viewModelScope.launch {
+                ApiClient.register(username, password, chosenAvatar)
+            }
+            return true
+        } else {
+            authErrorMessage = msg
+            toastMessage = msg
+            return false
+        }
+    }
+
+    fun loginAsDemo(): Boolean {
+        return login("Hachimi", "123456")
+    }
+
+    fun logout() {
+        prefs.edit().remove("logged_in_user_id").remove("username").apply()
+        isLoggedIn = false
+        toastMessage = "Đã đăng xuất tài khoản!"
+    }
+
+    // =========================================================================
+    // HỆ THỐNG BẠN BÈ & BẢNG XẾP HẠNG THẾ GIỚI
+    // =========================================================================
+
+    fun addFriend(friendUsername: String): Boolean {
+        if (friendUsername.isBlank()) {
+            toastMessage = "Vui lòng nhập tên người chơi!"
+            return false
+        }
+        val (success, msg) = db.addFriendByUsername(currentUserId, friendUsername.trim())
+        toastMessage = msg
+        if (success) {
+            friendsList = db.getFriends(currentUserId)
+            leaderboardList = db.getLeaderboard(currentUserId, leaderboardSortBy)
+            viewModelScope.launch {
+                ApiClient.addFriend(name, friendUsername.trim())
+            }
+            return true
+        }
+        return false
+    }
+
+    fun removeFriend(friendId: Int, friendUsername: String): Boolean {
+        val success = db.removeFriend(currentUserId, friendId)
+        if (success) {
+            toastMessage = "Đã hủy kết bạn với $friendUsername"
+            friendsList = db.getFriends(currentUserId)
+            leaderboardList = db.getLeaderboard(currentUserId, leaderboardSortBy)
+            viewModelScope.launch {
+                ApiClient.removeFriend(name, friendUsername)
+            }
+            return true
+        }
+        return false
+    }
+
+    fun setLeaderboardFilter(sortBy: String) {
+        leaderboardSortBy = sortBy
+        leaderboardList = db.getLeaderboard(currentUserId, sortBy)
     }
 
     /**
@@ -132,13 +268,11 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
             return false
         }
 
-        // Lưu vào SQL cục bộ
-        val success = db.buyItem(1, item)
+        val success = db.buyItem(currentUserId, item)
         if (success) {
             toastMessage = "Đã mua thành công ${item.name}!"
             loadDataFromSql()
 
-            // Đồng bộ lên MySQL Backend nếu có mạng
             viewModelScope.launch {
                 ApiClient.buyItem(name, item.id)
             }
@@ -153,7 +287,7 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
      * Trang bị vật phẩm vào slot của Anh Hùng
      */
     fun equipItem(invItem: InventoryItem) {
-        db.equipItem(1, invItem.invId, invItem.item.slot)
+        db.equipItem(currentUserId, invItem.invId, invItem.item.slot)
         toastMessage = "Đã trang bị ${invItem.item.name}!"
         loadDataFromSql()
 
@@ -186,7 +320,7 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
             if (itemsForSlot.isNotEmpty()) {
                 val best = itemsForSlot.maxByOrNull { it.item.combatPower }
                 if (best != null && !best.isEquipped) {
-                    db.equipItem(1, best.invId, slot)
+                    db.equipItem(currentUserId, best.invId, slot)
                     equippedCount++
                 }
             }
@@ -203,7 +337,7 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
      * Tháo toàn bộ trang bị
      */
     fun unequipAll() {
-        db.unequipAll(1)
+        db.unequipAll(currentUserId)
         toastMessage = "Đã tháo toàn bộ trang bị!"
         loadDataFromSql()
     }
@@ -213,7 +347,7 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
      */
     fun sellItem(invItem: InventoryItem): Boolean {
         val sellPrice = invItem.item.sellPriceGold
-        val success = db.sellItem(1, invItem.invId, sellPrice)
+        val success = db.sellItem(currentUserId, invItem.invId, sellPrice)
         if (success) {
             toastMessage = "Đã bán ${invItem.item.name} nhận +$sellPrice 🪙 Vàng!"
             loadDataFromSql()
@@ -226,8 +360,6 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
 
     /**
      * Hoàn thành bài tập & Tính toán Tỷ Lệ Rớt Đồ (Loot Drop Rate System)
-     * @param isFreeTraining Nếu là tập tự do thì KHÔNG nhận phần thưởng (vàng, xp, rơi đồ, không nhảy ải)
-     * @param monsterStageId Ải quái vật đang đánh để tiến trình ải chỉ tăng khi thắng đúng ải
      */
     fun finishWorkout(
         exercise: Exercise,
@@ -238,9 +370,8 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
     ): WorkoutReward? {
         if (score <= 0) return null
 
-        // 1. Ghi nhận bài tập vào SQLite Database
         val reward = db.finishWorkoutAndRollDrop(
-            userId = 1,
+            userId = currentUserId,
             exercise = exercise.name,
             reps = score,
             holdSec = if (exercise == Exercise.PLANK) score * 2 else 0,
@@ -258,7 +389,6 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
         }
         loadDataFromSql()
 
-        // 2. Gửi đồng bộ lên MySQL server qua REST API (chạy ngầm)
         viewModelScope.launch {
             val remoteReward = ApiClient.finishWorkout(
                 username = name,
@@ -270,7 +400,6 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
                 isFreeTraining = isFreeTraining
             )
             if (!isFreeTraining && remoteReward != null && remoteReward.droppedItem != null) {
-                // Nếu server trả về thêm vật phẩm, đồng bộ lại
                 loadDataFromSql()
             }
         }
@@ -291,7 +420,7 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
         val readable = db.readableDatabase
         for (i in 6 downTo 0) {
             val d = LocalDate.now().minusDays(i.toLong())
-            val c = readable.rawQuery("SELECT SUM(reps) FROM workouts WHERE user_id = 1 AND created_at = ?", arrayOf(d.toString()))
+            val c = readable.rawQuery("SELECT SUM(reps) FROM workouts WHERE user_id = ? AND created_at = ?", arrayOf(currentUserId.toString(), d.toString()))
             val reps = if (c.moveToFirst()) c.getInt(0) else 0
             c.close()
             list.add(d to reps)

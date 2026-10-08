@@ -47,41 +47,45 @@ fun AppRoot(vm: GameViewModel = viewModel()) {
     val showBar = route in listOf("today", "adventure", "shop", "guild", "hero")
 
     Box(Modifier.fillMaxSize()) {
-        Scaffold(
-            containerColor = C.Bg,
-            bottomBar = {
-                if (showBar) BottomBar(route) { dest ->
-                    nav.navigate(dest) {
-                        popUpTo("today")
-                        launchSingleTop = true
+        if (!vm.isLoggedIn) {
+            AuthScreen(vm)
+        } else {
+            Scaffold(
+                containerColor = C.Bg,
+                bottomBar = {
+                    if (showBar) BottomBar(route) { dest ->
+                        nav.navigate(dest) {
+                            popUpTo("today")
+                            launchSingleTop = true
+                        }
                     }
                 }
-            }
-        ) { pad ->
-            NavHost(nav, "today", Modifier.padding(bottom = pad.calculateBottomPadding())) {
-                composable("today") { TodayScreen(vm, nav) }
-                composable("adventure") { AdventureScreen(vm, nav) }
-                composable("shop") { ShopScreen(vm) }
-                composable("guild") { GuildScreen() }
-                composable("hero") { HeroScreen(vm, nav) }
-                composable("challenges") { ChallengesScreen(vm) { nav.popBackStack() } }
-                composable("workout/{ex}") { backStack ->
-                    val exName = backStack.arguments?.getString("ex") ?: Exercise.PUSHUP.name
-                    val ex = try { Exercise.valueOf(exName) } catch (e: Exception) { Exercise.PUSHUP }
-                    WorkoutScreen(ex, vm, isBoss = false) { nav.popBackStack() }
-                }
-                composable("workout/{ex}/{isBoss}") { backStack ->
-                    val exName = backStack.arguments?.getString("ex") ?: Exercise.PUSHUP.name
-                    val isBoss = backStack.arguments?.getString("isBoss")?.toBooleanStrictOrNull() ?: false
-                    val ex = try { Exercise.valueOf(exName) } catch (e: Exception) { Exercise.PUSHUP }
-                    WorkoutScreen(ex, vm, isBoss = isBoss) { nav.popBackStack() }
-                }
-                composable("workout/{ex}/{isBoss}/{stageId}") { backStack ->
-                    val exName = backStack.arguments?.getString("ex") ?: Exercise.PUSHUP.name
-                    val isBoss = backStack.arguments?.getString("isBoss")?.toBooleanStrictOrNull() ?: false
-                    val stageId = backStack.arguments?.getString("stageId")?.toIntOrNull()
-                    val ex = try { Exercise.valueOf(exName) } catch (e: Exception) { Exercise.PUSHUP }
-                    WorkoutScreen(ex, vm, stageId = stageId, isBoss = isBoss) { nav.popBackStack() }
+            ) { pad ->
+                NavHost(nav, "today", Modifier.padding(bottom = pad.calculateBottomPadding())) {
+                    composable("today") { TodayScreen(vm, nav) }
+                    composable("adventure") { AdventureScreen(vm, nav) }
+                    composable("shop") { ShopScreen(vm) }
+                    composable("guild") { GuildScreen(vm) }
+                    composable("hero") { HeroScreen(vm, nav) }
+                    composable("challenges") { ChallengesScreen(vm) { nav.popBackStack() } }
+                    composable("workout/{ex}") { backStack ->
+                        val exName = backStack.arguments?.getString("ex") ?: Exercise.PUSHUP.name
+                        val ex = try { Exercise.valueOf(exName) } catch (e: Exception) { Exercise.PUSHUP }
+                        WorkoutScreen(ex, vm, isBoss = false) { nav.popBackStack() }
+                    }
+                    composable("workout/{ex}/{isBoss}") { backStack ->
+                        val exName = backStack.arguments?.getString("ex") ?: Exercise.PUSHUP.name
+                        val isBoss = backStack.arguments?.getString("isBoss")?.toBooleanStrictOrNull() ?: false
+                        val ex = try { Exercise.valueOf(exName) } catch (e: Exception) { Exercise.PUSHUP }
+                        WorkoutScreen(ex, vm, isBoss = isBoss) { nav.popBackStack() }
+                    }
+                    composable("workout/{ex}/{isBoss}/{stageId}") { backStack ->
+                        val exName = backStack.arguments?.getString("ex") ?: Exercise.PUSHUP.name
+                        val isBoss = backStack.arguments?.getString("isBoss")?.toBooleanStrictOrNull() ?: false
+                        val stageId = backStack.arguments?.getString("stageId")?.toIntOrNull()
+                        val ex = try { Exercise.valueOf(exName) } catch (e: Exception) { Exercise.PUSHUP }
+                        WorkoutScreen(ex, vm, stageId = stageId, isBoss = isBoss) { nav.popBackStack() }
+                    }
                 }
             }
         }

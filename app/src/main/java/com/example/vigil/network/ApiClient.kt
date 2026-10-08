@@ -141,4 +141,85 @@ object ApiClient {
             null
         }
     }
+
+    suspend fun register(username: String, password: String, avatar: String = "🧑‍🎤"): Pair<Boolean, String> = withContext(Dispatchers.IO) {
+        try {
+            val body = JsonObject().apply {
+                addProperty("username", username)
+                addProperty("password", password)
+                addProperty("avatar", avatar)
+            }.toString().toRequestBody(jsonMediaType)
+
+            val req = Request.Builder().url("$baseUrl/api/auth/register").post(body).build()
+            client.newCall(req).execute().use { res ->
+                val json = res.body?.string() ?: ""
+                val obj = try { gson.fromJson(json, JsonObject::class.java) } catch (e: Exception) { null }
+                if (res.isSuccessful) {
+                    Pair(true, obj?.get("message")?.asString ?: "Đăng ký thành công!")
+                } else {
+                    Pair(false, obj?.get("error")?.asString ?: "Đăng ký thất bại!")
+                }
+            }
+        } catch (e: Exception) {
+            Pair(false, "Không thể kết nối máy chủ: ${e.message}")
+        }
+    }
+
+    suspend fun login(username: String, password: String): Pair<Boolean, String> = withContext(Dispatchers.IO) {
+        try {
+            val body = JsonObject().apply {
+                addProperty("username", username)
+                addProperty("password", password)
+            }.toString().toRequestBody(jsonMediaType)
+
+            val req = Request.Builder().url("$baseUrl/api/auth/login").post(body).build()
+            client.newCall(req).execute().use { res ->
+                val json = res.body?.string() ?: ""
+                val obj = try { gson.fromJson(json, JsonObject::class.java) } catch (e: Exception) { null }
+                if (res.isSuccessful) {
+                    Pair(true, obj?.get("message")?.asString ?: "Đăng nhập thành công!")
+                } else {
+                    Pair(false, obj?.get("error")?.asString ?: "Đăng nhập thất bại!")
+                }
+            }
+        } catch (e: Exception) {
+            Pair(false, "Không thể kết nối máy chủ: ${e.message}")
+        }
+    }
+
+    suspend fun addFriend(username: String, friendUsername: String): Pair<Boolean, String> = withContext(Dispatchers.IO) {
+        try {
+            val body = JsonObject().apply {
+                addProperty("username", username)
+                addProperty("friendUsername", friendUsername)
+            }.toString().toRequestBody(jsonMediaType)
+
+            val req = Request.Builder().url("$baseUrl/api/friends/add").post(body).build()
+            client.newCall(req).execute().use { res ->
+                val json = res.body?.string() ?: ""
+                val obj = try { gson.fromJson(json, JsonObject::class.java) } catch (e: Exception) { null }
+                if (res.isSuccessful) {
+                    Pair(true, obj?.get("message")?.asString ?: "Đã kết bạn thành công!")
+                } else {
+                    Pair(false, obj?.get("error")?.asString ?: "Không thể kết bạn!")
+                }
+            }
+        } catch (e: Exception) {
+            Pair(false, "Lỗi kết nối: ${e.message}")
+        }
+    }
+
+    suspend fun removeFriend(username: String, friendUsername: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val body = JsonObject().apply {
+                addProperty("username", username)
+                addProperty("friendUsername", friendUsername)
+            }.toString().toRequestBody(jsonMediaType)
+
+            val req = Request.Builder().url("$baseUrl/api/friends/remove").delete(body).build()
+            client.newCall(req).execute().use { it.isSuccessful }
+        } catch (e: Exception) {
+            false
+        }
+    }
 }

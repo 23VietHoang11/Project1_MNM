@@ -10,6 +10,8 @@ USE vigil_db;
 CREATE TABLE IF NOT EXISTS users (
     id INT AUTO_INCREMENT PRIMARY KEY,
     username VARCHAR(50) NOT NULL UNIQUE DEFAULT 'Hachimi',
+    password VARCHAR(255) NOT NULL DEFAULT '123456',
+    avatar VARCHAR(20) NOT NULL DEFAULT '🧑‍🎤',
     gold INT NOT NULL DEFAULT 100,
     gems INT NOT NULL DEFAULT 10,
     xp INT NOT NULL DEFAULT 0,
@@ -91,6 +93,17 @@ CREATE TABLE IF NOT EXISTS user_challenges (
     UNIQUE KEY uk_user_chal_date (user_id, challenge_id, date_key)
 ) ENGINE=InnoDB;
 
+-- 7. Bảng bạn bè giữa các người chơi (Friends)
+CREATE TABLE IF NOT EXISTS friends (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    friend_id INT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (friend_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE KEY uk_user_friend (user_id, friend_id)
+) ENGINE=InnoDB;
+
 -- ====================================================================
 -- SEED DATA: DỮ LIỆU VẬT PHẨM MẪU (24 ITEMS ĐẦY ĐỦ 6 SLOTS & 4 ĐỘ HIẾM)
 -- ====================================================================
@@ -143,12 +156,20 @@ INSERT INTO challenges (id, name, category, quote, goal, reward_xp, reward_gold,
 ('chal_weekly_3', 'Ý Chí Bất Khuất', 'WEEKLY', '“500 rep trong bảy ngày. Một huyền thoại.”', 500, 900, 150, 2)
 ON DUPLICATE KEY UPDATE name=VALUES(name);
 
--- KHỞI TẠO USER MẶC ĐỊNH & CHO MỘT VẬT PHẨM BAN ĐẦU
-INSERT INTO users (id, username, gold, gems, xp, level, streak, total_reps, stage) 
-VALUES (1, 'Hachimi', 150, 10, 0, 1, 0, 0, 1)
-ON DUPLICATE KEY UPDATE id=id;
+-- KHỞI TẠO USER MẶC ĐỊNH & DỮ LIỆU BẢNG XẾP HẠNG THẾ GIỚI
+INSERT INTO users (id, username, password, avatar, gold, gems, xp, level, streak, total_reps, stage) VALUES
+(1, 'Hachimi', '123456', '🦊', 250, 10, 80, 2, 3, 45, 2),
+(2, 'ShadowBlade', '123456', '🥷', 500, 25, 450, 5, 7, 210, 4),
+(3, 'ValkyrieGym', '123456', '👑', 900, 40, 950, 8, 14, 480, 7),
+(4, 'IronTitan', '123456', '🗿', 1400, 60, 1600, 12, 21, 850, 10),
+(5, 'DragonFit', '123456', '🐉', 300, 15, 250, 3, 5, 120, 3),
+(6, 'Phoenix', '123456', '🔥', 750, 30, 720, 6, 9, 340, 5)
+ON DUPLICATE KEY UPDATE username=VALUES(username);
 
 -- TẶNG TÂN BINH 1 MŨ ĐỒNG VÀ TRANG BỊ LUÔN
 INSERT INTO user_inventory (user_id, item_id, is_equipped)
 SELECT 1, 'helm_bronze', TRUE
 WHERE NOT EXISTS (SELECT 1 FROM user_inventory WHERE user_id = 1 AND item_id = 'helm_bronze');
+
+-- KẾT BẠN MẪU GIỮA HACHIMI VÀ SHADOWBLADE
+INSERT IGNORE INTO friends (user_id, friend_id) VALUES (1, 2), (2, 1);

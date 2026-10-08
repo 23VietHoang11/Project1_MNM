@@ -12,6 +12,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material3.Text
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -34,9 +36,11 @@ import com.example.vigil.data.GameViewModel
 import com.example.vigil.model.AdventureData
 import com.example.vigil.model.Monster
 import com.example.vigil.model.Chapter
+import com.example.vigil.model.FriendProfile
 import com.example.vigil.model.InventoryItem
 import com.example.vigil.model.Item
 import com.example.vigil.model.ItemSlot
+import com.example.vigil.model.LeaderboardEntry
 import com.example.vigil.model.Rarity
 import com.example.vigil.model.WorkoutReward
 import com.example.vigil.pose.Exercise
@@ -341,22 +345,31 @@ fun AdventureScreen(vm: GameViewModel, nav: NavController) {
 
 // ====================== SẢNH / BANG HỘI ======================
 @Composable
-fun GuildScreen() {
-    var tab by remember { mutableIntStateOf(0) }
+fun GuildScreen(vm: GameViewModel) {
+    var tab by remember { mutableIntStateOf(1) } // Mặc định mở tab Thế Giới
+    var friendNameInput by remember { mutableStateOf("") }
     val ctx = LocalContext.current
+
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).statusBarsPadding().padding(horizontal = 16.dp)) {
-        Text("Bang hội", color = C.Text, fontSize = 34.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 12.dp))
+        Text("Sảnh & Bang Hội", color = C.Text, fontSize = 34.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 12.dp))
         Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
             listOf("Bang hội", "Thế giới", "Bạn bè").forEachIndexed { i, t ->
-                Text(t, color = if (tab == i) C.Text else C.Muted, fontWeight = FontWeight.Bold,
-                    modifier = Modifier.clip(RoundedCornerShape(16.dp))
+                Text(
+                    t,
+                    color = if (tab == i) C.Text else C.Muted,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(16.dp))
                         .background(if (tab == i) C.Card else Color.Transparent)
-                        .clickable { tab = i }.padding(horizontal = 24.dp, vertical = 10.dp))
+                        .clickable { tab = i }
+                        .padding(horizontal = 20.dp, vertical = 10.dp)
+                )
             }
         }
+
         when (tab) {
             0 -> {
-
+                // BANG HỘI (Guilds)
                 Spacer(Modifier.height(12.dp))
                 VCard {
                     Text("HẦU HẾT CÁC SẢNH ĐÃ ĐẦY", color = C.Yellow, fontSize = 12.sp, letterSpacing = 2.sp, fontWeight = FontWeight.Bold)
@@ -365,9 +378,11 @@ fun GuildScreen() {
                     BigButton("👑 Dẫn dắt bang hội của riêng bạn", C.Yellow, Color.Black) {}
                 }
                 Spacer(Modifier.height(12.dp))
-                listOf(Triple("Taiwan Fitness 🇹🇼", "5/10", "Pushing for improve..."),
+                listOf(
+                    Triple("Taiwan Fitness 🇹🇼", "5/10", "Pushing for improve..."),
                     Triple("Werkwerkwerkwe...", "4/10", "My joints ache"),
-                    Triple("Bellpieces", "7/10", "Bunch of silly geezas...")).forEach { (n, c, d) ->
+                    Triple("Bellpieces", "7/10", "Bunch of silly geezas...")
+                ).forEach { (n, c, d) ->
                     VCard(Modifier.padding(bottom = 10.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text("🔒", fontSize = 28.sp, modifier = Modifier.padding(end = 12.dp))
@@ -382,19 +397,437 @@ fun GuildScreen() {
                     }
                 }
             }
-            1 -> VCard { Text("Bảng xếp hạng thế giới (cần backend/Firebase để có dữ liệu thật).", color = C.Muted) }
-            else -> {
+            1 -> {
+                // THẾ GIỚI - BẢNG XẾP HẠNG (World Leaderboard)
+                Spacer(Modifier.height(8.dp))
 
-                Spacer(Modifier.height(12.dp))
-                BigButton("＋  Mời bạn bè vào app", C.Card, C.Orange) {
+                // Bộ lọc xếp hạng theo chỉ số (Multi-metric sorting)
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    val metrics = listOf(
+                        Triple("CP", "⚡ Lực Chiến", C.Orange),
+                        Triple("LEVEL", "👑 Cấp Độ", C.Yellow),
+                        Triple("REPS", "🏋️ Tổng Reps", C.Green),
+                        Triple("STREAK", "🔥 Chuỗi Ngày", C.Pink)
+                    )
+                    metrics.forEach { (key, label, accentColor) ->
+                        val isSelected = vm.leaderboardSortBy == key
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(if (isSelected) accentColor.copy(alpha = 0.2f) else C.Card)
+                                .border(1.dp, if (isSelected) accentColor else C.Border, RoundedCornerShape(14.dp))
+                                .clickable { vm.setLeaderboardFilter(key) }
+                                .padding(horizontal = 14.dp, vertical = 8.dp)
+                        ) {
+                            Text(
+                                label,
+                                color = if (isSelected) accentColor else C.Muted,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                fontSize = 13.sp
+                            )
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(14.dp))
+
+                // Thẻ tóm tắt vị trí xếp hạng của người dùng hiện tại
+                val myRankEntry = vm.leaderboardList.firstOrNull { it.isCurrentUser }
+                if (myRankEntry != null) {
+                    VCard(border = C.Purple) {
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    Modifier.size(44.dp).clip(CircleShape).background(Color(0xFF2C2450)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(myRankEntry.avatar, fontSize = 24.sp)
+                                }
+                                Spacer(Modifier.width(12.dp))
+                                Column {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(myRankEntry.username, color = C.Text, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                        Spacer(Modifier.width(6.dp))
+                                        Text(
+                                            "BẠN",
+                                            color = C.Yellow,
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(4.dp))
+                                                .background(C.Yellow.copy(alpha = 0.2f))
+                                                .padding(horizontal = 5.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                    Text("Hạng hiện tại: #${myRankEntry.rank}", color = C.Muted, fontSize = 12.sp)
+                                }
+                            }
+                            Text(
+                                when (vm.leaderboardSortBy) {
+                                    "LEVEL" -> "Cấp ${myRankEntry.level}"
+                                    "REPS" -> "${myRankEntry.totalReps} rep"
+                                    "STREAK" -> "${myRankEntry.streak} ngày"
+                                    else -> "${myRankEntry.combatPower} CP"
+                                },
+                                color = C.Yellow,
+                                fontWeight = FontWeight.Black,
+                                fontSize = 16.sp
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(14.dp))
+                }
+
+                // Top 3 Podium (Bục vinh quang)
+                if (vm.leaderboardList.size >= 3) {
+                    val top1 = vm.leaderboardList.getOrNull(0)
+                    val top2 = vm.leaderboardList.getOrNull(1)
+                    val top3 = vm.leaderboardList.getOrNull(2)
+
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.Bottom
+                    ) {
+                        // Top 2 (Bạc)
+                        if (top2 != null) {
+                            LeaderboardPodiumCard(
+                                modifier = Modifier.weight(1f),
+                                entry = top2,
+                                rankBadge = "🥈",
+                                borderColor = Color(0xFFC0C0C0),
+                                sortBy = vm.leaderboardSortBy
+                            )
+                        }
+                        // Top 1 (Vàng)
+                        if (top1 != null) {
+                            LeaderboardPodiumCard(
+                                modifier = Modifier.weight(1.15f),
+                                entry = top1,
+                                rankBadge = "👑",
+                                borderColor = Color(0xFFFFD700),
+                                sortBy = vm.leaderboardSortBy,
+                                isTop1 = true
+                            )
+                        }
+                        // Top 3 (Đồng)
+                        if (top3 != null) {
+                            LeaderboardPodiumCard(
+                                modifier = Modifier.weight(1f),
+                                entry = top3,
+                                rankBadge = "🥉",
+                                borderColor = Color(0xFFCD7F32),
+                                sortBy = vm.leaderboardSortBy
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(16.dp))
+                }
+
+                SectionLabel("Bảng xếp hạng toàn cầu")
+
+                // Danh sách người chơi
+                vm.leaderboardList.forEach { entry ->
+                    VCard(
+                        Modifier.padding(bottom = 8.dp),
+                        border = if (entry.isCurrentUser) C.Purple else C.Border
+                    ) {
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // Số thứ tự xếp hạng
+                            Box(
+                                modifier = Modifier.width(32.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    when (entry.rank) {
+                                        1 -> "🥇"
+                                        2 -> "🥈"
+                                        3 -> "🥉"
+                                        else -> "#${entry.rank}"
+                                    },
+                                    color = if (entry.rank <= 3) Color.White else C.Muted,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = if (entry.rank <= 3) 18.sp else 14.sp
+                                )
+                            }
+
+                            // Avatar
+                            Box(
+                                Modifier.size(42.dp).clip(CircleShape).background(Color(0xFF242044)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(entry.avatar, fontSize = 22.sp)
+                            }
+                            Spacer(Modifier.width(10.dp))
+
+                            // Tên & Chi tiết
+                            Column(Modifier.weight(1f)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        entry.username,
+                                        color = C.Text,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 15.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    if (entry.isCurrentUser) {
+                                        Text(" (Bạn)", color = C.Yellow, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                                Text("Cấp ${entry.level} • ${entry.title}", color = C.Muted, fontSize = 12.sp)
+                            }
+
+                            // Chỉ số theo bộ lọc
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text(
+                                    when (vm.leaderboardSortBy) {
+                                        "LEVEL" -> "Cấp ${entry.level}"
+                                        "REPS" -> "${entry.totalReps} rep"
+                                        "STREAK" -> "${entry.streak} ngày"
+                                        else -> "${entry.combatPower} CP"
+                                    },
+                                    color = when (vm.leaderboardSortBy) {
+                                        "LEVEL" -> C.Yellow
+                                        "REPS" -> C.Green
+                                        "STREAK" -> C.Pink
+                                        else -> C.Orange
+                                    },
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 15.sp
+                                )
+
+                                Spacer(Modifier.height(4.dp))
+
+                                // Nút kết bạn nhanh
+                                if (!entry.isCurrentUser) {
+                                    if (entry.isFriend) {
+                                        Text(
+                                            "✓ Bạn bè",
+                                            color = C.Purple,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    } else {
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(C.Orange.copy(alpha = 0.2f))
+                                                .border(1.dp, C.Orange, RoundedCornerShape(8.dp))
+                                                .clickable { vm.addFriend(entry.username) }
+                                                .padding(horizontal = 8.dp, vertical = 3.dp)
+                                        ) {
+                                            Text(
+                                                "+ Kết bạn",
+                                                color = C.Orange,
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            else -> {
+                // BẠN BÈ (Friends system)
+                Spacer(Modifier.height(8.dp))
+
+                // Ô nhập để kết bạn bằng tên
+                VCard {
+                    Text("KẾT BẠN BẰNG TÊN NHÂN VẬT", color = C.Muted, fontSize = 12.sp, letterSpacing = 1.sp, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(8.dp))
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = friendNameInput,
+                            onValueChange = { friendNameInput = it },
+                            placeholder = { Text("Nhập tên (VD: ShadowBlade...)", color = C.Muted, fontSize = 13.sp) },
+                            singleLine = true,
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = C.Text,
+                                unfocusedTextColor = C.Text,
+                                focusedBorderColor = C.Orange,
+                                unfocusedBorderColor = C.Border,
+                                focusedContainerColor = Color(0xFF100E26),
+                                unfocusedContainerColor = Color(0xFF100E26)
+                            ),
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier.weight(1f)
+                        )
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(C.Orange)
+                                .clickable {
+                                    if (friendNameInput.isNotBlank()) {
+                                        val target = friendNameInput.trim()
+                                        if (vm.addFriend(target)) {
+                                            friendNameInput = ""
+                                        }
+                                    }
+                                }
+                                .padding(horizontal = 16.dp, vertical = 14.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("➕ Thêm", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(14.dp))
+                SectionLabel("Danh sách bạn bè (${vm.friendsList.size})")
+
+                if (vm.friendsList.isEmpty()) {
+                    VCard {
+                        Column(
+                            Modifier.fillMaxWidth().padding(vertical = 16.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text("👥", fontSize = 38.sp)
+                            Spacer(Modifier.height(8.dp))
+                            Text("Chưa có bạn bè nào", color = C.Text, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                "Nhập tên tài khoản ở trên hoặc kết bạn từ mục Bảng Xếp Hạng Thế Giới để cùng nhau so tài!",
+                                color = C.Muted,
+                                fontSize = 13.sp,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
+                } else {
+                    vm.friendsList.forEach { friend ->
+                        VCard(Modifier.padding(bottom = 10.dp)) {
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    Modifier.size(46.dp).clip(CircleShape).background(Color(0xFF2C2450)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(friend.avatar, fontSize = 24.sp)
+                                }
+                                Spacer(Modifier.width(12.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(friend.username, color = C.Text, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                    Text("Cấp ${friend.level} • ${friend.title}", color = C.Muted, fontSize = 12.sp)
+                                    Spacer(Modifier.height(4.dp))
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Text("⚡ ${friend.combatPower} CP", color = C.Orange, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                        Text("🏋️ ${friend.totalReps} rep", color = C.Green, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                        Text("🔥 ${friend.streak} ngày", color = C.Pink, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+
+                            Spacer(Modifier.height(12.dp))
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(Color(0xFF221F45))
+                                        .border(1.dp, C.Purple.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                                        .clickable { vm.toastMessage = "Đã gửi lời cổ vũ tới ${friend.username}! 💪 Hăng hái lên nào!" }
+                                        .padding(vertical = 10.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text("⚡ Cổ vũ", color = C.Purple, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(Color(0xFF301C24))
+                                        .border(1.dp, Color(0xFFEF4444).copy(alpha = 0.4f), RoundedCornerShape(12.dp))
+                                        .clickable { vm.removeFriend(friend.id, friend.username) }
+                                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text("Hủy bạn", color = Color(0xFFFCA5A5), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(14.dp))
+                BigButton("＋ Mời bạn bè ngoài đời vào app", C.Card, C.Orange) {
                     val i = Intent(Intent.ACTION_SEND).apply {
-                        type = "text/plain"; putExtra(Intent.EXTRA_TEXT, "Tập cùng mình trên Vigil nhé! 💪")
+                        type = "text/plain"; putExtra(Intent.EXTRA_TEXT, "Tập cùng mình trên Vigil nhé! Cùng leo bảng xếp hạng thế giới! 💪")
                     }
                     ctx.startActivity(Intent.createChooser(i, "Mời bạn bè"))
                 }
             }
         }
         Spacer(Modifier.height(90.dp))
+    }
+}
+
+@Composable
+private fun LeaderboardPodiumCard(
+    modifier: Modifier = Modifier,
+    entry: LeaderboardEntry,
+    rankBadge: String,
+    borderColor: Color,
+    sortBy: String,
+    isTop1: Boolean = false
+) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(16.dp))
+            .background(C.Card)
+            .border(if (isTop1) 2.dp else 1.dp, borderColor, RoundedCornerShape(16.dp))
+            .padding(vertical = if (isTop1) 16.dp else 12.dp, horizontal = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(rankBadge, fontSize = if (isTop1) 26.sp else 20.sp)
+        Spacer(Modifier.height(4.dp))
+        Box(
+            Modifier.size(if (isTop1) 48.dp else 40.dp).clip(CircleShape).background(Color(0xFF26214B)),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(entry.avatar, fontSize = if (isTop1) 26.sp else 22.sp)
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(
+            entry.username,
+            color = C.Text,
+            fontWeight = FontWeight.Bold,
+            fontSize = 13.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Text(
+            when (sortBy) {
+                "LEVEL" -> "Lv.${entry.level}"
+                "REPS" -> "${entry.totalReps} rep"
+                "STREAK" -> "${entry.streak}d"
+                else -> "${entry.combatPower} CP"
+            },
+            color = borderColor,
+            fontWeight = FontWeight.Black,
+            fontSize = 12.sp
+        )
     }
 }
 
@@ -411,12 +844,24 @@ fun HeroScreen(vm: GameViewModel, nav: NavController) {
         Text("Đồ Giám của bạn", color = C.Text, fontSize = 34.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 12.dp, bottom = 12.dp))
         VCard {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(80.dp).clip(RoundedCornerShape(16.dp)).background(Color(0xFF2B2A66)), contentAlignment = Alignment.Center) { Text("🧑‍🎤", fontSize = 44.sp) }
+                Box(Modifier.size(80.dp).clip(RoundedCornerShape(16.dp)).background(Color(0xFF2B2A66)), contentAlignment = Alignment.Center) {
+                    Text(vm.avatar.ifEmpty { "🧑‍🎤" }, fontSize = 44.sp)
+                }
                 Spacer(Modifier.width(14.dp))
-                Column {
-                    Text(vm.name, color = C.Text, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+                Column(Modifier.weight(1f)) {
+                    Text(vm.name, color = C.Text, fontSize = 26.sp, fontWeight = FontWeight.Bold)
                     Text("${vm.totalReps} rep tích lũy", color = C.Muted)
                     Chip("◎ ${vm.title}", C.Purple)
+                }
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color(0xFF2E1C28))
+                        .border(1.dp, Color(0xFFEF4444).copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                        .clickable { vm.logout() }
+                        .padding(horizontal = 10.dp, vertical = 8.dp)
+                ) {
+                    Text("Đăng xuất", color = Color(0xFFFCA5A5), fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
             }
             Spacer(Modifier.height(12.dp))
