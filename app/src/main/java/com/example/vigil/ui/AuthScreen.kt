@@ -61,13 +61,16 @@ fun AuthScreen(vm: GameViewModel) {
             // Header Logo
             Box(
                 Modifier
-                    .size(72.dp)
+                    .size(76.dp)
                     .clip(RoundedCornerShape(20.dp))
-                    .background(Brush.linearGradient(listOf(Color(0xFFFF8A3D), Color(0xFFFF3366))))
                     .border(2.dp, Color(0xFFFFC94D), RoundedCornerShape(20.dp)),
                 contentAlignment = Alignment.Center
             ) {
-                Text(if (isRegisterTab) selectedAvatar else "⚔️", fontSize = 38.sp)
+                androidx.compose.foundation.Image(
+                    painter = androidx.compose.ui.res.painterResource(id = com.example.vigil.R.drawable.app_avatar),
+                    contentDescription = "App Logo",
+                    modifier = Modifier.fillMaxSize()
+                )
             }
 
             Spacer(Modifier.height(14.dp))

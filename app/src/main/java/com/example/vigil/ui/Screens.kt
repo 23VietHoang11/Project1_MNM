@@ -974,7 +974,15 @@ fun HeroScreen(vm: GameViewModel, nav: NavController) {
         VCard {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(80.dp).clip(RoundedCornerShape(16.dp)).background(Color(0xFF2B2A66)), contentAlignment = Alignment.Center) {
-                    Text(vm.avatar.ifEmpty { "🧑‍🎤" }, fontSize = 44.sp)
+                    if (vm.avatar == "🦊" || vm.name.equals("Hachimi", ignoreCase = true)) {
+                        androidx.compose.foundation.Image(
+                            painter = androidx.compose.ui.res.painterResource(id = com.example.vigil.R.drawable.app_avatar),
+                            contentDescription = "Avatar",
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else {
+                        Text(vm.avatar.ifEmpty { "🧑‍🎤" }, fontSize = 44.sp)
+                    }
                 }
                 Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
