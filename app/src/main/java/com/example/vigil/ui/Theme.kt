@@ -38,6 +38,13 @@ fun VigilTheme(content: @Composable () -> Unit) = MaterialTheme(
     content = content
 )
 
+val com.example.vigil.model.Rarity.color: Color
+    get() = Color(this.colorHex)
+
+val com.example.vigil.model.Monster.color: Color
+    get() = Color(this.colorHex)
+
+
 @Composable
 fun VCard(modifier: Modifier = Modifier, border: Color = C.Border, onClick: (() -> Unit)? = null,
           content: @Composable ColumnScope.() -> Unit) {

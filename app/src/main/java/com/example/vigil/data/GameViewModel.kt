@@ -10,14 +10,22 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.vigil.model.DailyCheckInReward
 import com.example.vigil.model.FriendProfile
+import com.example.vigil.model.FriendRequestEntry
 import com.example.vigil.model.Guild
+import com.example.vigil.model.GuildBoss
+import com.example.vigil.model.GuildBossContribution
+import com.example.vigil.model.GuildBossInfo
+import com.example.vigil.model.GuildInvitationEntry
 import com.example.vigil.model.GuildMember
 import com.example.vigil.model.InventoryItem
 import com.example.vigil.model.Item
 import com.example.vigil.model.ItemSlot
 import com.example.vigil.model.LeaderboardEntry
+import com.example.vigil.model.OutgoingGuildInvitation
 import com.example.vigil.model.QuestItem
+import com.example.vigil.model.WorkoutHistoryEntry
 import com.example.vigil.model.WorkoutReward
+import com.example.vigil.model.WorkoutSummaryStats
 import com.example.vigil.network.ApiClient
 import com.example.vigil.pose.Exercise
 import kotlinx.coroutines.launch
@@ -45,16 +53,27 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
     var todayReps by mutableIntStateOf(0)
     var stage by mutableIntStateOf(1)
 
-    // Danh sách Bạn Bè & Bảng Xếp Hạng Thế Giới
+    // Danh sách Bạn Bè, Lời Mời Kết Bạn & Bảng Xếp Hạng Thế Giới
     var friendsList by mutableStateOf<List<FriendProfile>>(emptyList())
+    var incomingFriendRequests by mutableStateOf<List<FriendRequestEntry>>(emptyList())
+    var outgoingFriendRequests by mutableStateOf<List<FriendRequestEntry>>(emptyList())
     var leaderboardList by mutableStateOf<List<LeaderboardEntry>>(emptyList())
     var leaderboardSortBy by mutableStateOf("CP") // "CP", "LEVEL", "REPS", "STREAK"
 
-    // Bang Hội (Guilds)
+    // Bang Hội (Guilds) & Lời Mời Bang Hội
     var userGuild by mutableStateOf<Guild?>(null)
     var allGuilds by mutableStateOf<List<Guild>>(emptyList())
     var guildMembers by mutableStateOf<List<GuildMember>>(emptyList())
+    var incomingGuildInvitations by mutableStateOf<List<GuildInvitationEntry>>(emptyList())
+    var outgoingGuildInvitations by mutableStateOf<List<OutgoingGuildInvitation>>(emptyList())
     var showCreateGuildDialog by mutableStateOf(false)
+    var showInviteMemberDialog by mutableStateOf(false)
+    var guildBossInfo by mutableStateOf<GuildBossInfo?>(null)
+    var showGuildBossExerciseDialog by mutableStateOf(false)
+
+    // Lịch sử tập luyện chi tiết (Detailed Workout History & Stats)
+    var workoutHistory by mutableStateOf<List<WorkoutHistoryEntry>>(emptyList())
+    var workoutStats by mutableStateOf(WorkoutSummaryStats())
 
     // Điểm danh hàng tuần (Weekly Check-in) & Nhiệm vụ (Quests)
     var weeklyCheckInRewards by mutableStateOf<List<DailyCheckInReward>>(emptyList())
@@ -182,14 +201,33 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
         todayReps = if (wCursor.moveToFirst()) wCursor.getInt(0) else 0
         wCursor.close()
 
-        // Nạp danh sách Bạn Bè và Bảng Xếp Hạng Thế Giới
+        // Nạp danh sách Bạn Bè, Lời Mời Kết Bạn và Bảng Xếp Hạng Thế Giới
         friendsList = db.getFriends(currentUserId)
+        incomingFriendRequests = db.getIncomingFriendRequests(currentUserId)
+        outgoingFriendRequests = db.getOutgoingFriendRequests(currentUserId)
         leaderboardList = db.getLeaderboard(currentUserId, leaderboardSortBy)
 
-        // Nạp bang hội
+        // Nạp bang hội & lời mời bang hội
         userGuild = db.getUserGuild(currentUserId)
         allGuilds = db.getAllGuilds(currentUserId)
         guildMembers = if (userGuild != null) db.getGuildMembers(userGuild!!.id) else emptyList()
+        incomingGuildInvitations = db.getIncomingGuildInvitations(currentUserId)
+        outgoingGuildInvitations = if (userGuild != null) db.getOutgoingGuildInvitations(userGuild!!.id) else emptyList()
+
+        // Nạp thông tin Siêu Trùm Thế Giới của Bang Hội
+        val bossGuildId = userGuild?.id ?: 1
+        guildBossInfo = db.getGuildBossInfo(bossGuildId, currentUserId)
+        viewModelScope.launch {
+            val remoteBoss = ApiClient.getGuildBoss(bossGuildId, name)
+            if (remoteBoss != null) {
+                guildBossInfo = remoteBoss
+            }
+        }
+
+
+        // Nạp lịch sử tập luyện & thống kê
+        workoutHistory = db.getWorkoutHistory(currentUserId)
+        workoutStats = db.getWorkoutStats(currentUserId)
 
         // Nạp điểm danh tuần & nhiệm vụ
         val (checkInList, canClaim) = db.getWeeklyCheckInRewards(currentUserId)
@@ -258,20 +296,68 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
     // =========================================================================
     // HỆ THỐNG BẠN BÈ & BẢNG XẾP HẠNG THẾ GIỚI
     // =========================================================================
+    // HỆ THỐNG BẠN BÈ & LỜI MỜI KẾT BẠN (FRIEND REQUESTS)
+    // =========================================================================
 
-    fun addFriend(friendUsername: String): Boolean {
+    fun sendFriendRequest(friendUsername: String): Boolean {
         if (friendUsername.isBlank()) {
             toastMessage = "Vui lòng nhập tên người chơi!"
             return false
         }
-        val (success, msg) = db.addFriendByUsername(currentUserId, friendUsername.trim())
+        val (success, msg) = db.sendFriendRequest(currentUserId, friendUsername.trim())
         toastMessage = msg
         if (success) {
             friendsList = db.getFriends(currentUserId)
+            incomingFriendRequests = db.getIncomingFriendRequests(currentUserId)
+            outgoingFriendRequests = db.getOutgoingFriendRequests(currentUserId)
             leaderboardList = db.getLeaderboard(currentUserId, leaderboardSortBy)
             viewModelScope.launch {
-                ApiClient.addFriend(name, friendUsername.trim())
+                ApiClient.sendFriendRequest(name, friendUsername.trim())
             }
+            return true
+        }
+        return false
+    }
+
+    fun addFriend(friendUsername: String): Boolean {
+        return sendFriendRequest(friendUsername)
+    }
+
+    fun acceptFriendRequest(requestId: Int): Boolean {
+        val (success, msg) = db.acceptFriendRequest(requestId, currentUserId)
+        toastMessage = msg
+        if (success) {
+            friendsList = db.getFriends(currentUserId)
+            incomingFriendRequests = db.getIncomingFriendRequests(currentUserId)
+            outgoingFriendRequests = db.getOutgoingFriendRequests(currentUserId)
+            leaderboardList = db.getLeaderboard(currentUserId, leaderboardSortBy)
+            viewModelScope.launch {
+                ApiClient.respondFriendRequest(name, requestId, "accept")
+            }
+            return true
+        }
+        return false
+    }
+
+    fun declineFriendRequest(requestId: Int): Boolean {
+        val (success, msg) = db.declineFriendRequest(requestId, currentUserId)
+        toastMessage = msg
+        if (success) {
+            incomingFriendRequests = db.getIncomingFriendRequests(currentUserId)
+            viewModelScope.launch {
+                ApiClient.respondFriendRequest(name, requestId, "decline")
+            }
+            return true
+        }
+        return false
+    }
+
+    fun cancelFriendRequest(requestId: Int): Boolean {
+        val success = db.cancelFriendRequest(requestId, currentUserId)
+        if (success) {
+            toastMessage = "Đã thu hồi lời mời kết bạn."
+            outgoingFriendRequests = db.getOutgoingFriendRequests(currentUserId)
+            leaderboardList = db.getLeaderboard(currentUserId, leaderboardSortBy)
             return true
         }
         return false
@@ -297,7 +383,7 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     // =========================================================================
-    // HỆ THỐNG BANG HỘI (GUILDS)
+    // HỆ THỐNG BANG HỘI (GUILDS) & LỜI MỜI GIA NHẬP BANG
     // =========================================================================
 
     fun createGuild(guildName: String, badge: String, slogan: String): Boolean {
@@ -308,6 +394,7 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
             allGuilds = db.getAllGuilds(currentUserId)
             if (userGuild != null) {
                 guildMembers = db.getGuildMembers(userGuild!!.id)
+                outgoingGuildInvitations = db.getOutgoingGuildInvitations(userGuild!!.id)
             }
             showCreateGuildDialog = false
             return true
@@ -323,7 +410,9 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
             allGuilds = db.getAllGuilds(currentUserId)
             if (userGuild != null) {
                 guildMembers = db.getGuildMembers(userGuild!!.id)
+                outgoingGuildInvitations = db.getOutgoingGuildInvitations(userGuild!!.id)
             }
+            incomingGuildInvitations = db.getIncomingGuildInvitations(currentUserId)
             return true
         }
         return false
@@ -335,11 +424,125 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
         if (success) {
             userGuild = null
             guildMembers = emptyList()
+            outgoingGuildInvitations = emptyList()
             allGuilds = db.getAllGuilds(currentUserId)
+            incomingGuildInvitations = db.getIncomingGuildInvitations(currentUserId)
             return true
         }
         return false
     }
+
+    fun inviteToGuild(inviteeUsername: String): Boolean {
+        val (success, msg) = db.inviteToGuild(currentUserId, inviteeUsername)
+        toastMessage = msg
+        if (success) {
+            if (userGuild != null) {
+                outgoingGuildInvitations = db.getOutgoingGuildInvitations(userGuild!!.id)
+                val guildId = userGuild!!.id
+                viewModelScope.launch {
+                    ApiClient.inviteToGuild(name, inviteeUsername.trim(), guildId)
+                }
+            }
+            showInviteMemberDialog = false
+            return true
+        }
+        return false
+    }
+
+    fun acceptGuildInvitation(invitationId: Int): Boolean {
+        val (success, msg) = db.acceptGuildInvitation(invitationId, currentUserId)
+        toastMessage = msg
+        if (success) {
+            userGuild = db.getUserGuild(currentUserId)
+            allGuilds = db.getAllGuilds(currentUserId)
+            if (userGuild != null) {
+                guildMembers = db.getGuildMembers(userGuild!!.id)
+                outgoingGuildInvitations = db.getOutgoingGuildInvitations(userGuild!!.id)
+            }
+            incomingGuildInvitations = db.getIncomingGuildInvitations(currentUserId)
+            return true
+        }
+        return false
+    }
+
+    fun declineGuildInvitation(invitationId: Int): Boolean {
+        val (success, msg) = db.declineGuildInvitation(invitationId, currentUserId)
+        toastMessage = msg
+        if (success) {
+            incomingGuildInvitations = db.getIncomingGuildInvitations(currentUserId)
+            return true
+        }
+        return false
+    }
+
+    fun cancelGuildInvitation(invitationId: Int): Boolean {
+        val success = db.cancelGuildInvitation(invitationId, currentUserId)
+        if (success) {
+            toastMessage = "Đã thu hồi lời mời gia nhập bang."
+            if (userGuild != null) {
+                outgoingGuildInvitations = db.getOutgoingGuildInvitations(userGuild!!.id)
+            }
+            return true
+        }
+        return false
+    }
+
+    // =========================================================================
+    // BOSS THẾ GIỚI BANG HỘI (GUILD WORLD BOSS RAID)
+    // =========================================================================
+
+    fun loadGuildBoss() {
+        val bossGuildId = userGuild?.id ?: 1
+        guildBossInfo = db.getGuildBossInfo(bossGuildId, currentUserId)
+        viewModelScope.launch {
+            val remoteBoss = ApiClient.getGuildBoss(bossGuildId, name)
+            if (remoteBoss != null) {
+                guildBossInfo = remoteBoss
+            }
+        }
+    }
+
+    fun attackGuildBoss(score: Int, exercise: Exercise, damageDealt: Int) {
+        val bossGuildId = userGuild?.id ?: 1
+        val (success, msg) = db.attackGuildBoss(bossGuildId, currentUserId, damageDealt, score, exercise.name)
+        toastMessage = msg
+        loadDataFromSql()
+        viewModelScope.launch {
+            ApiClient.attackGuildBoss(bossGuildId, name, damageDealt, score, exercise.name)
+            loadGuildBoss()
+        }
+    }
+
+    fun claimGuildBossReward(): Boolean {
+        val bossGuildId = userGuild?.id ?: 1
+        val (success, msg) = db.claimGuildBossReward(bossGuildId, currentUserId)
+        toastMessage = msg
+        if (success) {
+            loadDataFromSql()
+            viewModelScope.launch {
+                ApiClient.claimGuildBossReward(bossGuildId, name)
+                loadGuildBoss()
+            }
+            return true
+        }
+        return false
+    }
+
+    fun summonNewGuildBoss(): Boolean {
+        val bossGuildId = userGuild?.id ?: 1
+        val (success, msg) = db.summonGuildBoss(bossGuildId)
+        toastMessage = msg
+        if (success) {
+            loadGuildBoss()
+            viewModelScope.launch {
+                ApiClient.summonGuildBoss(bossGuildId, name)
+                loadGuildBoss()
+            }
+            return true
+        }
+        return false
+    }
+
 
     // =========================================================================
     // ĐIỂM DANH HÀNG TUẦN & NHIỆM VỤ (WEEKLY CHECK-IN & QUESTS)
@@ -477,14 +680,14 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
         if (score <= 0) return null
 
         val reward = db.finishWorkoutAndRollDrop(
-            userId = currentUserId,
-            exercise = exercise.name,
-            reps = score,
-            holdSec = if (exercise == Exercise.PLANK) score * 2 else 0,
-            score = score,
-            isBoss = isBoss,
-            isFreeTraining = isFreeTraining,
-            monsterStageId = monsterStageId
+            currentUserId,
+            exercise.name,
+            score,
+            if (exercise == Exercise.PLANK) score * 2 else 0,
+            score,
+            isBoss,
+            isFreeTraining,
+            monsterStageId
         )
 
         if (isFreeTraining) {
@@ -497,13 +700,13 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
 
         viewModelScope.launch {
             val remoteReward = ApiClient.finishWorkout(
-                username = name,
-                exercise = exercise.name,
-                reps = score,
-                holdSeconds = if (exercise == Exercise.PLANK) score * 2 else 0,
-                score = score,
-                isBoss = isBoss,
-                isFreeTraining = isFreeTraining
+                name,
+                exercise.name,
+                score,
+                if (exercise == Exercise.PLANK) score * 2 else 0,
+                score,
+                isBoss,
+                isFreeTraining
             )
             if (!isFreeTraining && remoteReward != null && remoteReward.droppedItem != null) {
                 loadDataFromSql()

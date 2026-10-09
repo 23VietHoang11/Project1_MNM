@@ -38,17 +38,26 @@ import com.example.vigil.model.Monster
 import com.example.vigil.model.Chapter
 import com.example.vigil.model.DailyCheckInReward
 import com.example.vigil.model.FriendProfile
+import com.example.vigil.model.FriendRequestEntry
 import com.example.vigil.model.Guild
+import com.example.vigil.model.GuildInvitationEntry
 import com.example.vigil.model.GuildMember
 import com.example.vigil.model.InventoryItem
 import com.example.vigil.model.Item
 import com.example.vigil.model.ItemSlot
 import com.example.vigil.model.LeaderboardEntry
+import com.example.vigil.model.OutgoingGuildInvitation
 import com.example.vigil.model.QuestItem
 import com.example.vigil.model.Rarity
+import com.example.vigil.model.GuildBoss
+import com.example.vigil.model.GuildBossContribution
+import com.example.vigil.model.GuildBossInfo
+import com.example.vigil.model.WorkoutHistoryEntry
 import com.example.vigil.model.WorkoutReward
+import com.example.vigil.model.WorkoutSummaryStats
 import com.example.vigil.pose.Exercise
 import java.time.DayOfWeek
+import java.util.Locale
 
 // ====================== HÔM NAY ======================
 @Composable
@@ -91,9 +100,8 @@ fun TodayScreen(vm: GameViewModel, nav: NavController) {
             Text("Cấp ${vm.level} · ${vm.title}", color = C.Muted, fontWeight = FontWeight.Bold)
             Text("${vm.xp} / ${vm.xpNeeded} XP", color = C.Muted, fontSize = 13.sp)
         }
-        Spacer(Modifier.height(6.dp))
-        ProgressBar(vm.xp / vm.xpNeeded.toFloat(), C.Yellow)
-        Spacer(Modifier.height(14.dp))
+
+
 
 
         if (vm.streak > 0 && vm.todayReps == 0) {
@@ -369,24 +377,29 @@ fun AdventureScreen(vm: GameViewModel, nav: NavController) {
 
 // ====================== SẢNH / BANG HỘI ======================
 @Composable
-fun GuildScreen(vm: GameViewModel) {
-    var tab by remember { mutableIntStateOf(1) } // Mặc định mở tab Thế Giới
+fun GuildScreen(vm: GameViewModel, nav: NavController? = null) {
+    var tab by remember { mutableIntStateOf(0) }
     var friendNameInput by remember { mutableStateOf("") }
     val ctx = LocalContext.current
 
+    LaunchedEffect(Unit) {
+        vm.loadGuildBoss()
+    }
+
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).statusBarsPadding().padding(horizontal = 16.dp)) {
         Text("Sảnh & Bang Hội", color = C.Text, fontSize = 34.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 12.dp))
-        Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
-            listOf("Bang hội", "Thế giới", "Bạn bè").forEachIndexed { i, t ->
+        Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+            listOf("Bang hội", "🔥 Boss Bang", "Thế giới", "Bạn bè").forEachIndexed { i, t ->
                 Text(
                     t,
                     color = if (tab == i) C.Text else C.Muted,
                     fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp,
                     modifier = Modifier
                         .clip(RoundedCornerShape(16.dp))
                         .background(if (tab == i) C.Card else Color.Transparent)
                         .clickable { tab = i }
-                        .padding(horizontal = 20.dp, vertical = 10.dp)
+                        .padding(horizontal = 12.dp, vertical = 8.dp)
                 )
             }
         }
@@ -443,16 +456,76 @@ fun GuildScreen(vm: GameViewModel) {
                         }
 
                         Spacer(Modifier.height(14.dp))
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(C.Orange)
+                                    .clickable { vm.showInviteMemberDialog = true }
+                                    .padding(vertical = 10.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text("✉️ Mời hảo hữu", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            }
                             Box(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(12.dp))
                                     .background(Color(0xFF331C26))
                                     .border(1.dp, Color(0xFFEF4444).copy(alpha = 0.6f), RoundedCornerShape(12.dp))
                                     .clickable { vm.leaveGuild() }
-                                    .padding(horizontal = 14.dp, vertical = 8.dp)
+                                    .padding(horizontal = 14.dp, vertical = 10.dp)
                             ) {
                                 Text(if (myGuild.isUserLeader) "Giải tán bang" else "Rời bang", color = Color(0xFFFCA5A5), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+
+                    // Banner Boss Thế Giới Bang Hội (Truy cập nhanh)
+                    val bossBanner = vm.guildBossInfo?.boss
+                    Spacer(Modifier.height(14.dp))
+                    VCard(
+                        border = if (bossBanner != null && bossBanner.isDefeated) C.Green else Color(0xFFEF4444),
+                        modifier = Modifier.clickable { tab = 1 }
+                    ) {
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                Modifier.size(50.dp).clip(CircleShape).background(Color(0xFF38151E)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(bossBanner?.avatar ?: "🐉", fontSize = 28.sp)
+                            }
+                            Spacer(Modifier.width(12.dp))
+                            Column(Modifier.weight(1f)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(bossBanner?.name ?: "Hắc Long Viễn Cổ - Nidhogg", color = C.Text, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                                    Spacer(Modifier.width(6.dp))
+                                    if (bossBanner != null && bossBanner.isDefeated) {
+                                        Text("🏆 ĐÃ HẠ", color = C.Green, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    } else {
+                                        Text("🔥 BOSS THẾ GIỚI", color = Color(0xFFEF4444), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                                if (bossBanner != null) {
+                                    Text("${bossBanner.currentHp}/${bossBanner.maxHp} HP (${String.format(Locale.US, "%.1f%%", bossBanner.hpRatio * 100)})", color = C.Muted, fontSize = 12.sp)
+                                } else {
+                                    Text("Cùng bang hội tập luyện săn Boss nhận đồ Thần Thoại!", color = C.Muted, fontSize = 12.sp)
+                                }
+                            }
+                            Box(
+                                Modifier
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(if (bossBanner != null && bossBanner.isDefeated) C.Green else Color(0xFFEF4444))
+                                    .padding(horizontal = 10.dp, vertical = 6.dp)
+                            ) {
+                                Text(if (bossBanner != null && bossBanner.isDefeated) "Xem quà" else "Vào Săn", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
@@ -483,7 +556,90 @@ fun GuildScreen(vm: GameViewModel) {
                             }
                         }
                     }
+
+                    if (vm.outgoingGuildInvitations.isNotEmpty()) {
+                        Spacer(Modifier.height(14.dp))
+                        SectionLabel("Lời mời đã gửi (${vm.outgoingGuildInvitations.size})")
+                        vm.outgoingGuildInvitations.forEach { inv ->
+                            VCard(Modifier.padding(bottom = 8.dp)) {
+                                Row(
+                                    Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(Modifier.size(38.dp).clip(CircleShape).background(Color(0xFF26214B)), contentAlignment = Alignment.Center) {
+                                        Text(inv.inviteeAvatar, fontSize = 18.sp)
+                                    }
+                                    Spacer(Modifier.width(10.dp))
+                                    Column(Modifier.weight(1f)) {
+                                        Text(inv.inviteeName, color = C.Text, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                        Text("Cấp ${inv.inviteeLevel} • Đang chờ chấp nhận...", color = C.Yellow, fontSize = 11.sp)
+                                    }
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(Color(0xFF301C24))
+                                            .border(1.dp, Color(0xFFEF4444).copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                                            .clickable { vm.cancelGuildInvitation(inv.id) }
+                                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                                    ) {
+                                        Text("Thu hồi", color = Color(0xFFFCA5A5), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        }
+                    }
                 } else {
+                    // Lời mời gia nhập bang hội gửi tới người chơi (Pending)
+                    if (vm.incomingGuildInvitations.isNotEmpty()) {
+                        SectionLabel("Lời mời gia nhập bang hội (${vm.incomingGuildInvitations.size})")
+                        vm.incomingGuildInvitations.forEach { inv ->
+                            VCard(border = C.Yellow, modifier = Modifier.padding(bottom = 10.dp)) {
+                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                    Box(Modifier.size(52.dp).clip(CircleShape).background(Color(0xFF2C2450)), contentAlignment = Alignment.Center) {
+                                        Text(inv.guildBadge, fontSize = 28.sp)
+                                    }
+                                    Spacer(Modifier.width(12.dp))
+                                    Column(Modifier.weight(1f)) {
+                                        Text(inv.guildName, color = C.Text, fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                                        Text("Cấp ${inv.guildLevel} • ${inv.guildMemberCount}/30 thành viên", color = C.Muted, fontSize = 12.sp)
+                                        Text("Người mời: ${inv.inviterName} ${inv.inviterAvatar}", color = C.Purple, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                        if (inv.guildSlogan.isNotBlank()) {
+                                            Spacer(Modifier.height(2.dp))
+                                            Quote(inv.guildSlogan)
+                                        }
+                                    }
+                                }
+                                Spacer(Modifier.height(12.dp))
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(C.Green)
+                                            .clickable { vm.acceptGuildInvitation(inv.id) }
+                                            .padding(vertical = 10.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text("✓ Gia nhập", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                    }
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(Color(0xFF301C24))
+                                            .border(1.dp, Color(0xFFEF4444).copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                                            .clickable { vm.declineGuildInvitation(inv.id) }
+                                            .padding(vertical = 10.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text("✕ Từ chối", color = Color(0xFFFCA5A5), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                    }
+                                }
+                            }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                    }
+
                     // Chưa có bang hội: Nút tạo bang + Danh sách bang để gia nhập
                     VCard {
                         Text("BẠN CHƯA CÓ BANG HỘI", color = C.Yellow, fontSize = 12.sp, letterSpacing = 2.sp, fontWeight = FontWeight.Bold)
@@ -521,6 +677,10 @@ fun GuildScreen(vm: GameViewModel) {
                 }
             }
             1 -> {
+                // BOSS THẾ GIỚI BANG HỘI (Guild World Boss Raid)
+                GuildWorldBossTab(vm = vm, nav = nav, onGoToGuildTab = { tab = 0 })
+            }
+            2 -> {
                 // THẾ GIỚI - BẢNG XẾP HẠNG (World Leaderboard)
                 Spacer(Modifier.height(8.dp))
 
@@ -741,13 +901,20 @@ fun GuildScreen(vm: GameViewModel) {
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.Bold
                                         )
+                                    } else if (entry.hasPendingFriendRequest) {
+                                        Text(
+                                            "⏳ Chờ duyệt",
+                                            color = C.Yellow,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
                                     } else {
                                         Box(
                                             modifier = Modifier
                                                 .clip(RoundedCornerShape(8.dp))
                                                 .background(C.Orange.copy(alpha = 0.2f))
                                                 .border(1.dp, C.Orange, RoundedCornerShape(8.dp))
-                                                .clickable { vm.addFriend(entry.username) }
+                                                .clickable { vm.sendFriendRequest(entry.username) }
                                                 .padding(horizontal = 8.dp, vertical = 3.dp)
                                         ) {
                                             Text(
@@ -768,9 +935,9 @@ fun GuildScreen(vm: GameViewModel) {
                 // BẠN BÈ (Friends system)
                 Spacer(Modifier.height(8.dp))
 
-                // Ô nhập để kết bạn bằng tên
+                // Ô nhập để gửi lời mời kết bạn
                 VCard {
-                    Text("KẾT BẠN BẰNG TÊN NHÂN VẬT", color = C.Muted, fontSize = 12.sp, letterSpacing = 1.sp, fontWeight = FontWeight.Bold)
+                    Text("GỬI LỜI MỜI KẾT BẠN", color = C.Muted, fontSize = 12.sp, letterSpacing = 1.sp, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(8.dp))
                     Row(
                         Modifier.fillMaxWidth(),
@@ -780,7 +947,7 @@ fun GuildScreen(vm: GameViewModel) {
                         OutlinedTextField(
                             value = friendNameInput,
                             onValueChange = { friendNameInput = it },
-                            placeholder = { Text("Nhập tên (VD: ShadowBlade...)", color = C.Muted, fontSize = 13.sp) },
+                            placeholder = { Text("Nhập tên (VD: ValkyrieGym...)", color = C.Muted, fontSize = 13.sp) },
                             singleLine = true,
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedTextColor = C.Text,
@@ -800,15 +967,114 @@ fun GuildScreen(vm: GameViewModel) {
                                 .clickable {
                                     if (friendNameInput.isNotBlank()) {
                                         val target = friendNameInput.trim()
-                                        if (vm.addFriend(target)) {
+                                        if (vm.sendFriendRequest(target)) {
                                             friendNameInput = ""
                                         }
                                     }
                                 }
-                                .padding(horizontal = 16.dp, vertical = 14.dp),
+                                .padding(horizontal = 14.dp, vertical = 14.dp),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text("➕ Thêm", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            Text("✉️ Mời", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        }
+                    }
+                }
+
+                // LỜI MỜI KẾT BẠN ĐẾN (Incoming Friend Requests)
+                if (vm.incomingFriendRequests.isNotEmpty()) {
+                    Spacer(Modifier.height(14.dp))
+                    SectionLabel("Lời mời kết bạn (${vm.incomingFriendRequests.size})")
+
+                    vm.incomingFriendRequests.forEach { req ->
+                        VCard(border = C.Yellow, modifier = Modifier.padding(bottom = 10.dp)) {
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    Modifier.size(46.dp).clip(CircleShape).background(Color(0xFF2C2450)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(req.senderAvatar, fontSize = 24.sp)
+                                }
+                                Spacer(Modifier.width(12.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(req.senderUsername, color = C.Text, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                    Text("Cấp ${req.senderLevel} • ${req.senderTitle}", color = C.Muted, fontSize = 12.sp)
+                                    Spacer(Modifier.height(4.dp))
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Text("⚡ ${req.senderCombatPower} CP", color = C.Orange, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                        Text("🏋️ ${req.senderTotalReps} rep", color = C.Green, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+
+                            Spacer(Modifier.height(12.dp))
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(C.Green)
+                                        .clickable { vm.acceptFriendRequest(req.id) }
+                                        .padding(vertical = 10.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text("✓ Chấp nhận", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(Color(0xFF301C24))
+                                        .border(1.dp, Color(0xFFEF4444).copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                                        .clickable { vm.declineFriendRequest(req.id) }
+                                        .padding(vertical = 10.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text("✕ Từ chối", color = Color(0xFFFCA5A5), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // LỜI MỜI ĐÃ GỬI (Outgoing Friend Requests)
+                if (vm.outgoingFriendRequests.isNotEmpty()) {
+                    Spacer(Modifier.height(14.dp))
+                    SectionLabel("Lời mời đã gửi (${vm.outgoingFriendRequests.size})")
+
+                    vm.outgoingFriendRequests.forEach { req ->
+                        VCard(Modifier.padding(bottom = 8.dp)) {
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    Modifier.size(38.dp).clip(CircleShape).background(Color(0xFF26214B)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(req.senderAvatar, fontSize = 18.sp)
+                                }
+                                Spacer(Modifier.width(10.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(req.senderUsername, color = C.Text, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                    Text("Cấp ${req.senderLevel} • Đang chờ phản hồi...", color = C.Yellow, fontSize = 11.sp)
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(Color(0xFF301C24))
+                                        .border(1.dp, Color(0xFFEF4444).copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                                        .clickable { vm.cancelFriendRequest(req.id) }
+                                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                                ) {
+                                    Text("Thu hồi", color = Color(0xFFFCA5A5), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
                         }
                     }
                 }
@@ -827,7 +1093,7 @@ fun GuildScreen(vm: GameViewModel) {
                             Text("Chưa có bạn bè nào", color = C.Text, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                             Spacer(Modifier.height(4.dp))
                             Text(
-                                "Nhập tên tài khoản ở trên hoặc kết bạn từ mục Bảng Xếp Hạng Thế Giới để cùng nhau so tài!",
+                                "Nhập tên tài khoản ở trên hoặc gửi lời mời từ mục Bảng Xếp Hạng Thế Giới để cùng nhau so tài!",
                                 color = C.Muted,
                                 fontSize = 13.sp,
                                 textAlign = TextAlign.Center
@@ -877,6 +1143,21 @@ fun GuildScreen(vm: GameViewModel) {
                                 ) {
                                     Text("⚡ Cổ vũ", color = C.Purple, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                                 }
+
+                                if (vm.userGuild != null) {
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(C.Orange.copy(alpha = 0.2f))
+                                            .border(1.dp, C.Orange, RoundedCornerShape(12.dp))
+                                            .clickable { vm.inviteToGuild(friend.username) }
+                                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text("🛡️ Mời bang", color = C.Orange, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                    }
+                                }
+
                                 Box(
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(12.dp))
@@ -909,6 +1190,22 @@ fun GuildScreen(vm: GameViewModel) {
         CreateGuildDialog(vm = vm) {
             vm.showCreateGuildDialog = false
         }
+    }
+
+    if (vm.showInviteMemberDialog) {
+        InviteGuildMemberDialog(vm = vm) {
+            vm.showInviteMemberDialog = false
+        }
+    }
+
+    if (vm.showGuildBossExerciseDialog) {
+        GuildBossExerciseDialog(
+            onDismiss = { vm.showGuildBossExerciseDialog = false },
+            onSelectExercise = { ex ->
+                vm.showGuildBossExerciseDialog = false
+                nav?.navigate("workout/guild_boss/${ex.name}")
+            }
+        )
     }
 }
 
@@ -967,6 +1264,8 @@ fun HeroScreen(vm: GameViewModel, nav: NavController) {
     var inspectingItem by remember { mutableStateOf<InventoryItem?>(null) }
     var selectedCategory by remember { mutableStateOf("ALL") }
     var sortBy by remember { mutableStateOf("RARITY") }
+    var selectedExerciseFilter by remember { mutableStateOf("ALL") }
+    var isHistoryExpanded by remember { mutableStateOf(false) }
 
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).statusBarsPadding().padding(horizontal = 16.dp)) {
@@ -1009,20 +1308,269 @@ fun HeroScreen(vm: GameViewModel, nav: NavController) {
             Spacer(Modifier.height(6.dp)); ProgressBar(vm.xp / vm.xpNeeded.toFloat(), C.Yellow)
         }
 
-        SectionLabel("7 ngày qua")
+        // ====================== LỊCH SỬ RÈN LUYỆN & THỐNG KÊ CHI TIẾT ======================
+        SectionLabel("Lịch sử rèn luyện chi tiết")
+
+        // 1. Lưới thống kê tổng hợp (KPI Summary Grid)
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            // Tổng buổi tập
+            VCard(Modifier.weight(1f).padding(0.dp)) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                    Text("🏋️", fontSize = 20.sp)
+                    Spacer(Modifier.height(4.dp))
+                    Text("${vm.workoutStats.totalWorkouts}", color = C.Text, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text("Buổi tập", color = C.Muted, fontSize = 11.sp)
+                }
+            }
+            // Calo tiêu hao
+            VCard(Modifier.weight(1f).padding(0.dp)) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                    Text("🔥", fontSize = 20.sp)
+                    Spacer(Modifier.height(4.dp))
+                    Text("~${vm.workoutStats.totalCalories}", color = C.Orange, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text("Kcal", color = C.Muted, fontSize = 11.sp)
+                }
+            }
+            // Tổng XP
+            VCard(Modifier.weight(1f).padding(0.dp)) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                    Text("🌟", fontSize = 20.sp)
+                    Spacer(Modifier.height(4.dp))
+                    Text("+${vm.workoutStats.totalXp}", color = C.Yellow, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text("XP nhận", color = C.Muted, fontSize = 11.sp)
+                }
+            }
+            // Đồ rớt
+            VCard(Modifier.weight(1f).padding(0.dp)) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                    Text("🎁", fontSize = 20.sp)
+                    Spacer(Modifier.height(4.dp))
+                    Text("${vm.workoutStats.itemsDroppedCount}", color = C.Purple, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text("Đồ nhặt", color = C.Muted, fontSize = 11.sp)
+                }
+            }
+        }
+
+        Spacer(Modifier.height(10.dp))
+
+        // 2. Biểu đồ tuần
         VCard {
-            Text("${vm.weekReps()} rep", color = C.Text, fontSize = 28.sp, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(10.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Column {
+                    Text("TỔNG REP TUẦN NÀY", color = C.Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                    Text("${vm.weekReps()} rep", color = C.Text, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+                }
+                Chip("🔥 Streak ${vm.streak} ngày", C.Orange)
+            }
+            Spacer(Modifier.height(12.dp))
             val days = vm.last7Days()
             val max = (days.maxOf { it.second }).coerceAtLeast(1)
             Row(Modifier.fillMaxWidth().height(80.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
                 days.forEach { (d, r) ->
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Box(Modifier.width(26.dp).height((4 + 50 * r / max.toFloat()).dp).clip(RoundedCornerShape(3.dp)).background(if (r > 0) C.Orange else C.Border))
+                        Text(if (r > 0) "$r" else "", color = C.Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.height(2.dp))
+                        Box(Modifier.width(26.dp).height((4 + 50 * r / max.toFloat()).dp).clip(RoundedCornerShape(4.dp)).background(if (r > 0) C.Orange else C.Border))
+                        Spacer(Modifier.height(4.dp))
                         Text(when (d.dayOfWeek) {
                             DayOfWeek.MONDAY -> "T2"; DayOfWeek.TUESDAY -> "T3"; DayOfWeek.WEDNESDAY -> "T4"
                             DayOfWeek.THURSDAY -> "T5"; DayOfWeek.FRIDAY -> "T6"; DayOfWeek.SATURDAY -> "T7"; else -> "CN"
                         }, color = C.Muted, fontSize = 11.sp)
+                    }
+                }
+            }
+        }
+
+        Spacer(Modifier.height(10.dp))
+
+        // 3. Nhật ký chi tiết các buổi tập (Detailed Training Logs)
+        VCard {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("NHẬT KÝ CHI TIẾT TỪNG BUỔI", color = C.Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                Text("${vm.workoutHistory.size} buổi", color = C.Yellow, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            }
+
+            Spacer(Modifier.height(10.dp))
+
+            // Bộ lọc loại bài tập
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                listOf(
+                    "ALL" to "Tất cả",
+                    "SQUAT" to "🏋️ Squat",
+                    "PUSHUP" to "💪 Push-up",
+                    "PLANK" to "🧘 Plank",
+                    "JUMPING_JACKS" to "🤸 Bật nhảy"
+                ).forEach { (k, label) ->
+                    val isSel = selectedExerciseFilter == k
+                    Box(
+                        Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (isSel) C.Orange else Color(0xFF16142B))
+                            .border(1.dp, if (isSel) C.Orange else C.Border, RoundedCornerShape(8.dp))
+                            .clickable { selectedExerciseFilter = k }
+                            .padding(horizontal = 8.dp, vertical = 5.dp)
+                    ) {
+                        Text(label, color = if (isSel) Color.White else C.Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(12.dp))
+
+            val filteredHistory = if (selectedExerciseFilter == "ALL") {
+                vm.workoutHistory
+            } else {
+                vm.workoutHistory.filter { it.exercise.equals(selectedExerciseFilter, ignoreCase = true) }
+            }
+
+            if (filteredHistory.isEmpty()) {
+                Column(
+                    Modifier.fillMaxWidth().padding(vertical = 16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text("🧘", fontSize = 32.sp)
+                    Spacer(Modifier.height(6.dp))
+                    Text("Chưa có buổi tập nào phù hợp", color = C.Muted, fontSize = 13.sp)
+                }
+            } else {
+                val displayList = if (isHistoryExpanded) filteredHistory else filteredHistory.take(4)
+
+                displayList.forEach { log ->
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color(0xFF131126))
+                            .border(1.dp, Color(0xFF262348), RoundedCornerShape(12.dp))
+                            .padding(12.dp)
+                    ) {
+                        Column {
+                            // Dòng tiêu đề buổi tập
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    val (icon, name) = when (log.exercise.uppercase()) {
+                                        "SQUAT" -> "🏋️" to "Squat (Gánh đùi)"
+                                        "PUSHUP" -> "💪" to "Push-up (Chống đẩy)"
+                                        "PLANK" -> "🧘" to "Plank (Siết cơ lõi)"
+                                        "JUMPING_JACKS" -> "🤸" to "Jumping Jacks"
+                                        else -> "⚡" to log.exercise
+                                    }
+                                    Text(icon, fontSize = 20.sp)
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(name, color = C.Text, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                }
+                                Text("📅 ${log.createdAt}", color = C.Muted, fontSize = 11.sp)
+                            }
+
+                            Spacer(Modifier.height(8.dp))
+
+                            // Chỉ số rep, điểm chuẩn tư thế, calo
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                val repText = if (log.exercise.equals("PLANK", ignoreCase = true)) {
+                                    "${log.holdSeconds}s giữ"
+                                } else {
+                                    "${log.reps} rep"
+                                }
+                                Box(
+                                    Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(C.Orange.copy(alpha = 0.2f))
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Text(repText, color = C.Orange, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+
+                                val scoreGrade = when {
+                                    log.score >= 90 -> "Xuất sắc 🌟"
+                                    log.score >= 75 -> "Rất tốt ✨"
+                                    else -> "Đạt chuẩn 👍"
+                                }
+                                Box(
+                                    Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(C.Green.copy(alpha = 0.2f))
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Text("${log.score}/100 • $scoreGrade", color = C.Green, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+
+                                Box(
+                                    Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(Color(0xFF281C38))
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Text("🔥 ~${log.caloriesBurned} kcal", color = Color(0xFFF472B6), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+
+                            Spacer(Modifier.height(8.dp))
+
+                            // Phần thưởng nhận được
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Text("+${log.xpEarned} XP", color = C.Yellow, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    Text("+${log.goldEarned} 🪙 Vàng", color = C.Orange, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+
+                                if (log.droppedItem != null) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(log.droppedItem.rarity.color.copy(alpha = 0.15f))
+                                            .border(1.dp, log.droppedItem.rarity.color, RoundedCornerShape(6.dp))
+                                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                                    ) {
+                                        Text(log.droppedItem.icon, fontSize = 12.sp)
+                                        Spacer(Modifier.width(4.dp))
+                                        Text(log.droppedItem.name, color = log.droppedItem.rarity.color, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (filteredHistory.size > 4) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0xFF1E1A38))
+                            .clickable { isHistoryExpanded = !isHistoryExpanded }
+                            .padding(vertical = 8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            if (isHistoryExpanded) "▲ Thu gọn lịch sử" else "▼ Xem thêm ${filteredHistory.size - 4} buổi tập",
+                            color = C.Orange,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
                 }
             }
@@ -2081,6 +2629,675 @@ fun CreateGuildDialog(
     }
 }
 
+// ====================== DIALOG MỜI THÀNH VIÊN VÀO BANG ======================
+@Composable
+fun InviteGuildMemberDialog(
+    vm: GameViewModel,
+    onDismiss: () -> Unit
+) {
+    var usernameInput by remember { mutableStateOf("") }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.85f))
+            .clickable { onDismiss() },
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth(0.92f)
+                .clip(RoundedCornerShape(24.dp))
+                .background(C.Card)
+                .border(1.5.dp, C.Orange, RoundedCornerShape(24.dp))
+                .clickable(enabled = false) {}
+                .padding(20.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("✉️", fontSize = 24.sp)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Mời Vào Bang Hội", color = C.Text, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                }
+                Text(
+                    "✕",
+                    color = C.Muted,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .clickable { onDismiss() }
+                        .padding(4.dp)
+                )
+            }
+
+            Spacer(Modifier.height(14.dp))
+            Text("Nhập tên hiệp sĩ bạn muốn mời gia nhập bang:", color = C.Muted, fontSize = 13.sp)
+            Spacer(Modifier.height(10.dp))
+
+            OutlinedTextField(
+                value = usernameInput,
+                onValueChange = { usernameInput = it },
+                placeholder = { Text("Tên người chơi (VD: DragonFit...)", color = C.Muted, fontSize = 13.sp) },
+                singleLine = true,
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = C.Text,
+                    unfocusedTextColor = C.Text,
+                    focusedBorderColor = C.Orange,
+                    unfocusedBorderColor = C.Border,
+                    focusedContainerColor = Color(0xFF100E26),
+                    unfocusedContainerColor = Color(0xFF100E26)
+                ),
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Spacer(Modifier.height(14.dp))
+
+            // Danh sách gợi ý từ hảo hữu
+            if (vm.friendsList.isNotEmpty()) {
+                Text("Gợi ý từ bạn bè:", color = C.Muted, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(8.dp))
+                Column(
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 140.dp).verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    vm.friendsList.forEach { f ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(Color(0xFF221F45))
+                                .clickable { usernameInput = f.username }
+                                .padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(f.avatar, fontSize = 18.sp)
+                                Spacer(Modifier.width(8.dp))
+                                Text(f.username, color = C.Text, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            }
+                            Text("Cấp ${f.level} • Chọn", color = C.Orange, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+                Spacer(Modifier.height(14.dp))
+            }
+
+            BigButton("🚀 Gửi lời mời", C.Orange, Color.White) {
+                if (usernameInput.isNotBlank()) {
+                    vm.inviteToGuild(usernameInput.trim())
+                }
+            }
+
+            Spacer(Modifier.height(8.dp))
+            BigButton("Hủy", C.Border, C.Text) { onDismiss() }
+        }
+    }
+}
+
+// ====================== BOSS THẾ GIỚI BANG HỘI (GUILD WORLD BOSS RAID) ======================
+@Composable
+fun GuildWorldBossTab(
+    vm: GameViewModel,
+    nav: NavController?,
+    onGoToGuildTab: () -> Unit
+) {
+    val myGuild = vm.userGuild
+    if (myGuild == null) {
+        Spacer(Modifier.height(20.dp))
+        VCard(border = C.Purple) {
+            Column(
+                Modifier.fillMaxWidth().padding(vertical = 16.dp, horizontal = 12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text("🐉", fontSize = 56.sp)
+                Spacer(Modifier.height(10.dp))
+                Text("SIÊU TRÙM THẾ GIỚI BANG HỘI", color = C.Yellow, fontWeight = FontWeight.Bold, fontSize = 18.sp, textAlign = TextAlign.Center)
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "Boss Thế Giới là chiến dịch quy mô lớn dành riêng cho các Bang Hội. Toàn bộ anh em trong bang cùng hợp lực tập luyện (Squat, Hít đất, Gập bụng, Plank) qua camera AI để dồn sát thương hạ gục Boss và nhận trang bị Thần Thoại!",
+                    color = C.Muted,
+                    fontSize = 13.sp,
+                    textAlign = TextAlign.Center,
+                    lineHeight = 19.sp
+                )
+                Spacer(Modifier.height(18.dp))
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(C.Purple)
+                        .clickable { onGoToGuildTab() }
+                        .padding(horizontal = 24.dp, vertical = 12.dp)
+                ) {
+                    Text("🛡️ Gia nhập Bang Hội ngay", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                }
+            }
+        }
+        return
+    }
+
+    val bossInfo = vm.guildBossInfo
+    val boss = bossInfo?.boss
+
+    if (boss == null) {
+        Spacer(Modifier.height(24.dp))
+        VCard(border = C.Purple) {
+            Column(
+                Modifier.fillMaxWidth().padding(20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text("⚔️", fontSize = 48.sp)
+                Spacer(Modifier.height(8.dp))
+                Text("Đang tải dữ liệu Boss Bang Hội...", color = C.Text, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                Spacer(Modifier.height(14.dp))
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(C.Purple)
+                        .clickable { vm.loadGuildBoss() }
+                        .padding(horizontal = 20.dp, vertical = 10.dp)
+                ) {
+                    Text("Tải lại", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                }
+            }
+        }
+        return
+    }
+
+    Spacer(Modifier.height(8.dp))
+
+    // 1. Thẻ Boss chính (Boss Showcase Card)
+    VCard(
+        border = if (boss.isDefeated) C.Green else Color(0xFFEF4444)
+    ) {
+        Column(Modifier.fillMaxWidth()) {
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    Modifier
+                        .size(70.dp)
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(Brush.radialGradient(listOf(Color(0xFF5E1325), Color(0xFF1E101A)))),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(boss.avatar, fontSize = 38.sp)
+                }
+                Spacer(Modifier.width(14.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(boss.name, color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp)
+                    Text(boss.title, color = C.Yellow, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                    Spacer(Modifier.height(6.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        if (boss.isDefeated) {
+                            Text(
+                                "🏆 ĐÃ TIÊU DIỆT",
+                                color = C.Green,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(C.Green.copy(alpha = 0.2f))
+                                    .padding(horizontal = 8.dp, vertical = 3.dp)
+                            )
+                        } else {
+                            Text(
+                                "⚔️ ĐANG HOẠT ĐỘNG",
+                                color = Color(0xFFEF4444),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(Color(0xFFEF4444).copy(alpha = 0.2f))
+                                    .padding(horizontal = 8.dp, vertical = 3.dp)
+                            )
+                            Text(
+                                "MÁU KHỦNG: 500K",
+                                color = C.Orange,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(C.Orange.copy(alpha = 0.2f))
+                                    .padding(horizontal = 8.dp, vertical = 3.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(16.dp))
+
+            // Thanh Máu HP Boss (Gradient Health Bar)
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Máu Siêu Trùm", color = C.Muted, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Text(
+                    "${boss.currentHp} / ${boss.maxHp} HP (${String.format(Locale.US, "%.1f%%", boss.hpRatio * 100)})",
+                    color = if (boss.isDefeated) C.Green else Color(0xFFFF5252),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            Spacer(Modifier.height(6.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(16.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0xFF231826))
+                    .border(1.dp, Color(0xFF3D2133), RoundedCornerShape(8.dp))
+            ) {
+                if (boss.hpRatio > 0f) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(boss.hpRatio)
+                            .fillMaxHeight()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(
+                                Brush.horizontalGradient(
+                                    listOf(Color(0xFFEF4444), Color(0xFFF97316), Color(0xFFFBBF24))
+                                )
+                            )
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(16.dp))
+
+            // Thẻ phần thưởng chiến dịch
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Color(0xFF1D1830))
+                    .border(1.dp, Color(0xFF382D60), RoundedCornerShape(14.dp))
+                    .padding(12.dp)
+            ) {
+                Text(
+                    "🎁 PHẦN THƯỞNG CHIẾN THẮNG HẬU HĨNH",
+                    color = C.Yellow,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(Modifier.height(6.dp))
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Box(
+                        Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0xFF282142))
+                            .padding(vertical = 6.dp, horizontal = 8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("💰 +${boss.rewardGold} Vàng", color = C.Yellow, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Box(
+                        Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0xFF282142))
+                            .padding(vertical = 6.dp, horizontal = 8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("💎 +${boss.rewardGems} Gem", color = Color(0xFF67E8F9), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+                Spacer(Modifier.height(6.dp))
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color(0xFF3A1C2C))
+                        .border(1.dp, Color(0xFFEC4899).copy(alpha = 0.5f), RoundedCornerShape(10.dp))
+                        .padding(vertical = 6.dp, horizontal = 10.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        "⚔️ ${boss.rewardItemName} (Trang Bị Thần Thoại)",
+                        color = Color(0xFFF472B6),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(16.dp))
+
+            // Nút Thao Tác
+            if (!boss.isDefeated) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Brush.horizontalGradient(listOf(Color(0xFFDC2626), Color(0xFFEA580C))))
+                        .clickable { vm.showGuildBossExerciseDialog = true }
+                        .padding(vertical = 14.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        "⚔️ KHIÊU CHIẾN GÓP DAME (AI CAMERA) ⚔️",
+                        color = Color.White,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 14.sp
+                    )
+                }
+            } else {
+                if (!bossInfo.isHasClaimedDefeatReward) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(Brush.horizontalGradient(listOf(Color(0xFF16A34A), Color(0xFF059669))))
+                            .clickable { vm.claimGuildBossReward() }
+                            .padding(vertical = 14.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            "🎁 NHẬN PHẦN THƯỞNG CHIẾN DỊCH NGAY 🎁",
+                            color = Color.White,
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 14.sp
+                        )
+                    }
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(Color(0xFF1B382B))
+                            .border(1.dp, C.Green, RoundedCornerShape(14.dp))
+                            .padding(vertical = 10.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            "✅ BẠN ĐÃ NHẬN PHẦN THƯỞNG CHIẾN DỊCH",
+                            color = C.Green,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp
+                        )
+                    }
+                }
+
+                if (myGuild.isUserLeader) {
+                    Spacer(Modifier.height(10.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(Color(0xFF3B2456))
+                            .border(1.dp, C.Purple, RoundedCornerShape(14.dp))
+                            .clickable { vm.summonNewGuildBoss() }
+                            .padding(vertical = 12.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            "👑 TRIỆU HỒI BOSS MỚI (DÀNH CHO CHỦ BANG)",
+                            color = Color(0xFFD8B4FE),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    Spacer(Modifier.height(16.dp))
+
+    // 2. Thẻ Đóng Góp Của Bản Thân
+    VCard(border = C.Purple) {
+        Column(Modifier.fillMaxWidth()) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("🔥 CỐNG HIẾN CỦA BẠN", color = C.Yellow, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                Text(
+                    if (bossInfo.myRank > 0) "Hạng #${bossInfo.myRank} trong Bang" else "Chưa xếp hạng",
+                    color = C.Muted,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+            Spacer(Modifier.height(12.dp))
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color(0xFF281F38))
+                        .padding(10.dp)
+                ) {
+                    Column {
+                        Text("Sát Thương", color = C.Muted, fontSize = 11.sp)
+                        Spacer(Modifier.height(2.dp))
+                        Text("${bossInfo.myDamage}", color = Color(0xFFF87171), fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    }
+                }
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color(0xFF281F38))
+                        .padding(10.dp)
+                ) {
+                    Column {
+                        Text("Tổng Reps", color = C.Muted, fontSize = 11.sp)
+                        Spacer(Modifier.height(2.dp))
+                        Text("${bossInfo.myReps}", color = C.Green, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    }
+                }
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color(0xFF281F38))
+                        .padding(10.dp)
+                ) {
+                    Column {
+                        Text("Tỉ Lệ Góp", color = C.Muted, fontSize = 11.sp)
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            String.format(Locale.US, "%.1f%%", bossInfo.myPercentage),
+                            color = C.Yellow,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    Spacer(Modifier.height(16.dp))
+
+    // 3. Bảng Vàng Sát Thương Bang Hội (Guild Raid Leaderboard)
+    SectionLabel("Bảng vàng sát thương Bang Hội (${bossInfo.contributors.size})")
+
+    if (bossInfo.contributors.isEmpty()) {
+        VCard {
+            Text(
+                "Chưa có thành viên nào tấn công Boss trong đợt này. Hãy nhấn 'Khiêu chiến góp dame' để mở màn trận chiến!",
+                color = C.Muted,
+                fontSize = 13.sp,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp)
+            )
+        }
+    } else {
+        bossInfo.contributors.forEach { c ->
+            val isMe = c.userId == vm.currentUserId
+            VCard(
+                Modifier.padding(bottom = 8.dp),
+                border = if (isMe) C.Purple else C.Border
+            ) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(Modifier.width(32.dp), contentAlignment = Alignment.Center) {
+                        Text(
+                            when (c.rank) {
+                                1 -> "🥇"
+                                2 -> "🥈"
+                                3 -> "🥉"
+                                else -> "#${c.rank}"
+                            },
+                            fontSize = if (c.rank <= 3) 18.sp else 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (c.rank <= 3) Color.White else C.Muted
+                        )
+                    }
+                    Box(
+                        Modifier.size(40.dp).clip(CircleShape).background(Color(0xFF26214B)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(c.avatar, fontSize = 20.sp)
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Column(Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(c.username, color = C.Text, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            if (isMe) {
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    "BẠN",
+                                    color = C.Yellow,
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(C.Yellow.copy(alpha = 0.2f))
+                                        .padding(horizontal = 4.dp, vertical = 1.dp)
+                                )
+                            }
+                        }
+                        Text("Cấp ${c.level} • ${c.reps} reps • ${String.format(Locale.US, "%.1f%%", c.percentage)}", color = C.Muted, fontSize = 11.sp)
+                    }
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text("${c.damage} DMG", color = Color(0xFFF87171), fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        if (c.isHasClaimed) {
+                            Text("✓ Đã nhận quà", color = C.Green, fontSize = 10.sp, fontWeight = FontWeight.Medium)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ====================== DIALOG CHỌN BÀI TẬP ĐÁNH BOSS ======================
+@Composable
+fun GuildBossExerciseDialog(
+    onDismiss: () -> Unit,
+    onSelectExercise: (Exercise) -> Unit
+) {
+    val exercises = listOf(
+        Triple(Exercise.SQUAT, "Ngồi Xổm (Squat)", "Sát thương x1.0 · Đòn cận chiến vũ bão"),
+        Triple(Exercise.PUSHUP, "Hít Đất (Push-up)", "Sát thương x1.2 · Uy lực công phá cao"),
+        Triple(Exercise.SITUP, "Gập Bụng (Sit-up)", "Sát thương x1.0 · Tấn công cốt lõi"),
+        Triple(Exercise.PLANK, "Plank Thể Lực", "Sát thương theo giây · Chống đỡ tuyệt đối")
+    )
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.85f))
+            .clickable { onDismiss() },
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth(0.92f)
+                .clip(RoundedCornerShape(24.dp))
+                .background(C.Card)
+                .border(1.5.dp, Color(0xFFDC2626), RoundedCornerShape(24.dp))
+                .clickable(enabled = false) {}
+                .padding(20.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("🐉", fontSize = 24.sp)
+                    Spacer(Modifier.width(8.dp))
+                    Text("CHỌN BÀI TẬP SĂN BOSS", color = C.Text, fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                }
+                Text(
+                    "✕",
+                    color = C.Muted,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.clickable { onDismiss() }.padding(4.dp)
+                )
+            }
+
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Mỗi rep chuẩn qua AI Pose Detection sẽ chuyển hóa thành đòn tấn công thực tế lên HP của Boss Bang!",
+                color = C.Muted,
+                fontSize = 12.sp
+            )
+
+            Spacer(Modifier.height(16.dp))
+
+            exercises.forEach { (ex, title, desc) ->
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 10.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Color(0xFF261D36))
+                        .border(1.dp, Color(0xFF4C3668), RoundedCornerShape(16.dp))
+                        .clickable { onSelectExercise(ex) }
+                        .padding(14.dp)
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            when (ex) {
+                                Exercise.SQUAT -> "🦵"
+                                Exercise.PUSHUP -> "💪"
+                                Exercise.SITUP -> "🔥"
+                                Exercise.PLANK -> "🛡️"
+                                else -> "⚡"
+                            },
+                            fontSize = 28.sp
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(title, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                            Text(desc, color = C.Yellow, fontSize = 11.sp)
+                        }
+                        Text("⚔️ Đấu", color = Color(0xFFF87171), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    }
+                }
+            }
+        }
+    }
+}
+
 // ====================== PHẦN THƯỞNG ĐIỂM DANH HÀNG TUẦN ======================
 @Composable
 fun WeeklyRewardItemCard(
@@ -2423,31 +3640,7 @@ fun ScrollQuestDialog(
             ) {
                 when (selectedTab) {
                     0 -> {
-                        // TAB ĐIỂM DANH HÀNG TUẦN
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(14.dp))
-                                .background(Color(0xFF1B1634))
-                                .border(1.dp, C.Border, RoundedCornerShape(14.dp))
-                                .padding(12.dp)
-                        ) {
-                            Column {
-                                Text(
-                                    "✨ QUÀ ĐĂNG NHẬP 7 NGÀY (RESET MỖI TUẦN)",
-                                    color = C.Yellow,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Black,
-                                    letterSpacing = 1.sp
-                                )
-                                Spacer(Modifier.height(4.dp))
-                                Text(
-                                    "Bắt đầu chu kỳ mới vào thứ Hai hằng tuần. Điểm danh đủ 7 ngày nhận rương ngọc quý!",
-                                    color = C.Muted,
-                                    fontSize = 11.sp
-                                )
-                            }
-                        }
+
 
                         vm.weeklyCheckInRewards.forEach { rew ->
                             WeeklyRewardItemCard(

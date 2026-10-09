@@ -62,6 +62,7 @@ fun WorkoutScreen(
     vm: GameViewModel,
     stageId: Int? = null,
     isBoss: Boolean = false,
+    isGuildBoss: Boolean = false,
     onClose: () -> Unit
 ) {
     val ctx = LocalContext.current
@@ -83,38 +84,53 @@ fun WorkoutScreen(
     }
 
     // Xác định thông tin Quái vật / Boss / Tập tự do cho trận chiến này
-    val isFreeTraining = stageId == null && !isBoss
-    val monster: Monster = remember(stageId, isBoss, exercise) {
-        if (stageId != null) {
+    val guildBoss = vm.guildBossInfo?.boss
+    val isFreeTraining = stageId == null && !isBoss && !isGuildBoss
+    val monster: Monster = remember(stageId, isBoss, isGuildBoss, exercise, guildBoss) {
+        if (isGuildBoss && guildBoss != null) {
+            Monster(
+                8888,
+                guildBoss.name,
+                guildBoss.title,
+                guildBoss.avatar,
+                guildBoss.currentHp.coerceAtLeast(1000),
+                exercise,
+                true,
+                guildBoss.rewardGold,
+                guildBoss.rewardGems,
+                "Siêu Boss Thế Giới của bang hội! Toàn bộ thành viên chung sức góp dame!"
+            )
+        } else if (stageId != null) {
             AdventureData.getMonsterByStage(stageId)
         } else if (isBoss) {
             Monster(
-                stageId = 999,
-                name = "Ma Thần Hư Không",
-                title = "TRÙM ĐẠI THỬ THÁCH",
-                avatar = "👹",
-                maxHp = (vm.attackDamage * 25).coerceAtLeast(2000),
-                exercise = exercise,
-                isBoss = true,
-                expReward = 400,
-                goldReward = 70,
-                lore = "Thực thể bóng tối chỉ gục ngã trước những chiến binh kiên trì nhất!"
+                999,
+                "Ma Thần Hư Không",
+                "TRÙM ĐẠI THỬ THÁCH",
+                "👹",
+                (vm.attackDamage * 25).coerceAtLeast(2000),
+                exercise,
+                true,
+                400,
+                70,
+                "Thực thể bóng tối chỉ gục ngã trước những chiến binh kiên trì nhất!"
             )
         } else {
             Monster(
-                stageId = 0,
-                name = "Bù Nhìn Luyện Võ",
-                title = "Tập Tự Do · Không Phần Thưởng",
-                avatar = "🎯",
-                maxHp = 999999,
-                exercise = exercise,
-                isBoss = false,
-                expReward = 0,
-                goldReward = 0,
-                lore = "Hình nộm rơm vững chắc để bạn mài giũa động tác mà không tính phần thưởng."
+                0,
+                "Bù Nhìn Luyện Võ",
+                "Tập Tự Do · Không Phần Thưởng",
+                "🎯",
+                999999,
+                exercise,
+                false,
+                0,
+                0,
+                "Hình nộm rơm vững chắc để bạn mài giũa động tác mà không tính phần thưởng."
             )
         }
     }
+
 
     val counter = remember { RepCounter(exercise) }
     var frame by remember { mutableStateOf<PoseFrame?>(null) }
@@ -360,7 +376,49 @@ fun WorkoutScreen(
 
             Spacer(Modifier.height(14.dp))
 
-            if (isFreeTraining) {
+            if (isGuildBoss) {
+                // CHẾ ĐỘ BOSS THẾ GIỚI BANG HỘI: Mỗi rep đều đóng góp sát thương thực tế
+                if (counter.score > 0) {
+                    BigButton("🔥 GÓP SÁT THƯƠNG BANG HỘI (-$totalDamageDealt DMG)", C.Orange, Color.White) {
+                        vm.attackGuildBoss(
+                            score = counter.score,
+                            exercise = exercise,
+                            damageDealt = totalDamageDealt
+                        )
+                        onClose()
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Đã hoàn thành ${counter.score} rep · Gây $totalDamageDealt sát thương lên Boss Bang Hội",
+                        color = Color(0xFFFFD166),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                } else {
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(18.dp))
+                            .background(Color(0xFF231E3D))
+                            .padding(vertical = 14.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            "Tập ít nhất 1 rep để góp sát thương diệt trùm!",
+                            color = C.Muted,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp
+                        )
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Rời trận khiêu chiến",
+                        color = Color(0xFF7E789B),
+                        fontSize = 12.sp,
+                        modifier = Modifier.clickable { onClose() }
+                    )
+                }
+            } else if (isFreeTraining) {
                 // CHẾ ĐỘ TẬP TỰ DO: Không nhận phần thưởng
                 BigButton("✅ HOÀN THÀNH TẬP LUYỆN (${counter.score} REP)", C.Blue, Color.White) {
                     vm.finishWorkout(
@@ -390,7 +448,8 @@ fun WorkoutScreen(
                     )
                     onClose()
                 }
-            } else {
+            }
+ else {
                 // Chưa hạ gục quái thì không có thưởng
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Box(

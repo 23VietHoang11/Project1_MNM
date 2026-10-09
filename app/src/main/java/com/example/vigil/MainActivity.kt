@@ -65,7 +65,7 @@ fun AppRoot(vm: GameViewModel = viewModel()) {
                     composable("today") { TodayScreen(vm, nav) }
                     composable("adventure") { AdventureScreen(vm, nav) }
                     composable("shop") { ShopScreen(vm) }
-                    composable("guild") { GuildScreen(vm) }
+                    composable("guild") { GuildScreen(vm, nav) }
                     composable("hero") { HeroScreen(vm, nav) }
                     composable("challenges") { ChallengesScreen(vm) { nav.popBackStack() } }
                     composable("workout/{ex}") { backStack ->
@@ -86,6 +86,12 @@ fun AppRoot(vm: GameViewModel = viewModel()) {
                         val ex = try { Exercise.valueOf(exName) } catch (e: Exception) { Exercise.PUSHUP }
                         WorkoutScreen(ex, vm, stageId = stageId, isBoss = isBoss) { nav.popBackStack() }
                     }
+                    composable("workout/guild_boss/{ex}") { backStack ->
+                        val exName = backStack.arguments?.getString("ex") ?: Exercise.SQUAT.name
+                        val ex = try { Exercise.valueOf(exName) } catch (e: Exception) { Exercise.SQUAT }
+                        WorkoutScreen(ex, vm, isGuildBoss = true) { nav.popBackStack() }
+                    }
+
                 }
             }
         }
