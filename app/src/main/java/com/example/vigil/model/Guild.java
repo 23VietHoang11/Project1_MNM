@@ -12,10 +12,12 @@ public class Guild {
     private final int totalReps;
     private final boolean isUserMember;
     private final boolean isUserLeader;
+    private final boolean hasPendingApplication;
 
     public Guild(int id, String name, String badge, String slogan,
                  int leaderId, String leaderName, int level, int memberCount,
-                 int totalReps, boolean isUserMember, boolean isUserLeader) {
+                 int totalReps, boolean isUserMember, boolean isUserLeader,
+                 boolean hasPendingApplication) {
         this.id = id;
         this.name = name;
         this.badge = badge != null ? badge : "🛡️";
@@ -27,6 +29,13 @@ public class Guild {
         this.totalReps = totalReps;
         this.isUserMember = isUserMember;
         this.isUserLeader = isUserLeader;
+        this.hasPendingApplication = hasPendingApplication;
+    }
+
+    public Guild(int id, String name, String badge, String slogan,
+                 int leaderId, String leaderName, int level, int memberCount,
+                 int totalReps, boolean isUserMember, boolean isUserLeader) {
+        this(id, name, badge, slogan, leaderId, leaderName, level, memberCount, totalReps, isUserMember, isUserLeader, false);
     }
 
     public int getId() { return id; }
@@ -40,4 +49,5 @@ public class Guild {
     public int getTotalReps() { return totalReps; }
     public boolean isUserMember() { return isUserMember; }
     public boolean isUserLeader() { return isUserLeader; }
+    public boolean isHasPendingApplication() { return hasPendingApplication; }
 }

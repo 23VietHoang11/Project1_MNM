@@ -70,38 +70,99 @@ def init_db():
         )
     ''')
 
-    # Seed items
+    # Seed 48 items
     items_data = [
-        ('helm_bronze', 'Mũ Đồng Tân Binh', 'HELMET', 'COMMON', 50, 0, 0, 3, 0, 1, 'Mũ đồng đúc thô sơ.', '🪖'),
-        ('helm_iron', 'Thiết Giáp Đầu', 'HELMET', 'RARE', 160, 0, 3, 7, 0, 2, 'Rèn từ sắt non tôi luyện.', '⛑️'),
-        ('helm_valkyrie', 'Mũ Lông Vũ Valkyrie', 'HELMET', 'EPIC', 420, 5, 5, 14, 0, 8, 'Ban phước bởi nữ thần chiến trận.', '👑'),
-        ('helm_dragon', 'Vương Miện Long Thần', 'HELMET', 'LEGENDARY', 1000, 20, 18, 25, 0, 12, 'Tỏa ra uy áp của loài rồng cổ đại.', '🐉'),
-        ('armor_leather', 'Áo Da Dã Ngoại', 'ARMOR', 'COMMON', 60, 0, 0, 4, 2, 0, 'Áo da bò mềm mại, thoáng mát.', '🥋'),
-        ('armor_plate', 'Chiến Giáp Thép Nung', 'ARMOR', 'RARE', 180, 0, 5, 10, 0, 0, 'Tấm giáp kiên cố bảo vệ cơ hoành.', '🛡️'),
-        ('armor_shadow', 'Áo Choàng Bóng Đêm', 'ARMOR', 'EPIC', 450, 6, 10, 0, 12, 8, 'Hòa mình vào bóng tối.', '🥷'),
-        ('armor_celestial', 'Thánh Giáp Quang Minh', 'ARMOR', 'LEGENDARY', 1200, 25, 20, 28, 15, 0, 'Ánh hào quang chiếu rọi.', '✨'),
-        ('gloves_cloth', 'Băng Quấn Cổ Tay', 'GLOVES', 'COMMON', 40, 0, 3, 0, 2, 0, 'Bảo vệ khớp cổ tay.', '🥊'),
-        ('gloves_grip', 'Găng Hít Đất Siêu Bám', 'GLOVES', 'RARE', 150, 0, 8, 0, 6, 0, 'Đế cao su hạt kim cương.', '🧤'),
-        ('gloves_titan', 'Găng Titan Siêu Lực', 'GLOVES', 'EPIC', 400, 5, 18, 0, 8, 3, 'Khung titan trợ lực bùng nổ.', '🦾'),
-        ('gloves_infinity', 'Găng Tay Vô Cực', 'GLOVES', 'LEGENDARY', 1100, 22, 32, 0, 16, 14, 'Nắm giữ sức mạnh vũ trụ.', '🌌'),
-        ('boots_runner', 'Giày Chạy Phản Lực', 'BOOTS', 'COMMON', 45, 0, 0, 3, 0, 2, 'Êm ái, giảm chấn gối khi squat.', '👟'),
-        ('boots_iron', 'Hộ Chân Chiến Binh', 'BOOTS', 'RARE', 150, 0, 6, 7, 0, 0, 'Bọc thép mũi chân vững chãi.', '🥾'),
-        ('boots_winged', 'Hài Phong Thần Hermes', 'BOOTS', 'EPIC', 380, 5, 0, 15, 6, 12, 'Lướt đi nhẹ tựa lông hồng.', '🪽'),
-        ('boots_abyss', 'Bộ Bước Vực Thẳm', 'BOOTS', 'LEGENDARY', 950, 18, 18, 24, 0, 15, 'Mỗi bước chân để lại uy chấn.', '⚡'),
-        ('amulet_stone', 'Bùa Đá May Mắn', 'AMULET', 'COMMON', 50, 0, 0, 0, 0, 4, 'Hòn đá cuội ven suối đem lại vận may.', '🪬'),
-        ('amulet_ruby', 'Huyết Ngọc Hồi Phục', 'AMULET', 'RARE', 190, 0, 6, 6, 0, 5, 'Viên hồng ngọc đẩy nhanh phục hồi.', '🔮'),
-        ('amulet_eye', 'Mắt Ưng Tinh Anh', 'AMULET', 'EPIC', 480, 7, 10, 0, 16, 10, 'Giúp nhìn rõ từng biên độ góc khớp.', '👁️'),
-        ('amulet_sun', 'Thái Dương Cổ Thạch', 'AMULET', 'LEGENDARY', 1300, 30, 20, 20, 20, 25, 'Cội nguồn sinh lực vĩnh cửu.', '☀️'),
-        ('weapon_stick', 'Côn Gỗ Luyện Tập', 'WEAPON', 'COMMON', 50, 0, 4, 0, 2, 0, 'Khúc gỗ sồi chắc nịch.', '🪵'),
-        ('weapon_sword', 'Thanh Kiếm Thép Đúc', 'WEAPON', 'RARE', 180, 0, 10, 0, 6, 0, 'Lưỡi kiếm sắc bén rèn từ lò luyện kim.', '⚔️'),
-        ('weapon_axe', 'Rìu Chiến Berserker', 'WEAPON', 'EPIC', 460, 6, 22, 8, 0, 0, 'Chiếc rìu khổng lồ của chiến binh cuồng nộ.', '🪓'),
-        ('weapon_excalibur', 'Thánh Kiếm Excalibur', 'WEAPON', 'LEGENDARY', 1400, 30, 35, 0, 18, 15, 'Bảo kiếm huyền thoại rút từ trong đá.', '🗡️'),
-        ('weapon_dragon_slayer', 'Đại Đao Trảm Long', 'WEAPON', 'LEGENDARY', 3500, 80, 55, 10, 25, 20, 'Thần binh rèn từ vảy và răng Hắc Long.', '🗡️'),
-        ('armor_dragon_scale', 'Long Lân Thần Giáp', 'ARMOR', 'LEGENDARY', 3200, 75, 25, 45, 15, 20, 'Lớp vảy rồng kiên cố bảo vệ toàn thân.', '🐲'),
-        ('amulet_boss_heart', 'Trái Tim Hắc Long', 'AMULET', 'LEGENDARY', 4000, 100, 25, 25, 25, 35, 'Tinh hoa sinh mệnh Siêu Trùm Thế Giới.', '💎')
-    ]
-    c.executemany('INSERT OR IGNORE INTO items VALUES (?,?,?,?,?,?,?,?,?,?,?,?)', items_data)
+        # 1. HELMET
+        ('helm_bronze', 'Mũ Đồng Tân Binh', 'HELMET', 'COMMON', 50, 0, 0, 3, 0, 1, 'Mũ đồng đúc thô sơ giúp che chắn đầu khi tập nặng.', '🪖'),
+        ('helm_scout', 'Nón Trinh Sát Rừng Rậm', 'HELMET', 'UNCOMMON', 90, 0, 0, 5, 2, 1, 'Nón vải ngụy trang nhẹ nhàng cho các buổi cardio dã ngoại.', '🧢'),
+        ('helm_iron', 'Thiết Giáp Đầu', 'HELMET', 'RARE', 160, 0, 3, 7, 0, 2, 'Rèn từ sắt non tôi luyện trong nhiệt độ cao.', '⛑️'),
+        ('helm_valkyrie', 'Mũ Lông Vũ Valkyrie', 'HELMET', 'EPIC', 420, 5, 5, 14, 0, 8, 'Ban phước bởi các nữ thần chiến trận phương Bắc.', '👑'),
+        ('helm_dragon', 'Vương Miện Long Thần', 'HELMET', 'LEGENDARY', 1000, 20, 20, 18, 25, 12, 'Tỏa ra uy áp của loài rồng cổ đại, tăng cực đại thể lực.', '🐉'),
+        ('helm_abyss', 'Vương Miện Vực Sâu', 'HELMET', 'MYTHIC', 2800, 60, 35, 40, 15, 20, 'Ngưng tụ từ hắc ám vô tận dưới đáy vực, bảo hộ tuyệt đối tinh thần.', '👑'),
+        ('helm_odin', 'Mũ Thần Chiến Binh Odin', 'HELMET', 'ANCIENT', 5000, 120, 50, 55, 30, 35, 'Bảo vật của Vua các vị thần, khai mở trí tuệ và thể lực siêu phàm.', '🦅'),
+        ('helm_divine_crown', 'Thần Quan Thiên Giới', 'HELMET', 'DIVINE', 8500, 200, 75, 80, 50, 60, 'Vương miện của Đấng Tối Cao, hội tụ hào quang thái hư bảo bọc.', '✨'),
 
+        # 2. ARMOR
+        ('armor_leather', 'Áo Da Dã Ngoại', 'ARMOR', 'COMMON', 60, 0, 0, 4, 2, 0, 'Áo da bò mềm mại, thoáng mát cho các buổi hít đất dài.', '🥋'),
+        ('armor_chainmail', 'Áo Giáp Xích Bạc', 'ARMOR', 'UNCOMMON', 110, 0, 2, 7, 1, 0, 'Kết từ hàng nghìn vòng xích thép dẻo dai phân tán lực va đập.', '⛓️'),
+        ('armor_plate', 'Chiến Giáp Thép Nung', 'ARMOR', 'RARE', 180, 0, 5, 10, 0, 0, 'Tấm giáp kiên cố bảo vệ cơ hoành và lưng dưới.', '🛡️'),
+        ('armor_shadow', 'Áo Choàng Bóng Đêm', 'ARMOR', 'EPIC', 450, 6, 10, 0, 12, 8, 'Hòa mình vào bóng tối, tăng sự tập trung và độ chuẩn xác.', '🥷'),
+        ('armor_celestial', 'Thánh Giáp Quang Minh', 'ARMOR', 'LEGENDARY', 1200, 25, 20, 28, 15, 0, 'Ánh hào quang chiếu rọi bảo bọc người chiến binh bền bỉ.', '✨'),
+        ('armor_dragon_scale', 'Long Lân Thần Giáp', 'ARMOR', 'MYTHIC', 3200, 75, 25, 60, 15, 20, 'Lớp vảy rồng kiên cố bất khả xâm phạm bảo vệ toàn thân.', '🐲'),
+        ('armor_aegis', 'Thánh Giáp Bất Hoại Aegis', 'ARMOR', 'ANCIENT', 5500, 130, 40, 80, 25, 35, 'Tấm khiên giáp huyền thoại của thần Zeus, chặn đứng mọi ngoại lực.', '🛡️'),
+        ('armor_primordial', 'Hỗn Nguyên Chiến Giáp', 'ARMOR', 'DIVINE', 9500, 240, 65, 120, 45, 60, 'Rèn từ vật chất khởi thủy trước khi vũ trụ hình thành, bất hoại vĩnh cửu.', '🌌'),
+
+        # 3. GLOVES
+        ('gloves_cloth', 'Băng Quấn Cổ Tay', 'GLOVES', 'COMMON', 40, 0, 3, 0, 2, 0, 'Bảo vệ khớp cổ tay khi chống đẩy liên tục trên sàn cứng.', '🥊'),
+        ('gloves_leather_strap', 'Găng Đấu Khí Thiếu Niên', 'GLOVES', 'UNCOMMON', 80, 0, 5, 0, 4, 1, 'Găng da dê bọc khớp tăng uy lực cú đấm và chống đẩy.', '🥊'),
+        ('gloves_grip', 'Găng Hít Đất Siêu Bám', 'GLOVES', 'RARE', 150, 0, 8, 0, 6, 0, 'Đế cao su hạt kim cương chống trượt tay hoàn đối.', '🧤'),
+        ('gloves_titan', 'Găng Titan Siêu Lực', 'GLOVES', 'EPIC', 400, 5, 18, 0, 8, 3, 'Khung titan trợ lực giúp bùng nổ lực đẩy cánh tay.', '🦾'),
+        ('gloves_infinity', 'Găng Tay Vô Cực', 'GLOVES', 'LEGENDARY', 1100, 22, 32, 0, 16, 14, 'Nắm giữ sức mạnh vũ trụ gom tụ trong từng thớ cơ.', '🌌'),
+        ('gloves_dragon_claw', 'Vuốt Rồng Bạt Hải', 'GLOVES', 'MYTHIC', 2600, 55, 50, 10, 30, 25, 'Móng vuốt rồng thiêng xé toạc hư không, bùng nổ lực đẩy tay.', '🐉'),
+        ('gloves_thunder_strike', 'Quyền Thủ Lôi Thần Thor', 'GLOVES', 'ANCIENT', 4800, 110, 75, 20, 40, 30, 'Găng sắt thần thánh giúp vung sấm sét ngàn cân dễ như trở bàn tay.', '⚡'),
+        ('gloves_creator', 'Thủ Ấn Khởi Nguyên', 'GLOVES', 'DIVINE', 8200, 190, 110, 35, 65, 55, 'Bàn tay nhào nặn tinh cầu, chuyển hóa từng nhịp đẩy thành siêu sóng xung kích.', '☄️'),
+
+        # 4. BOOTS
+        ('boots_runner', 'Giày Chạy Phản Lực', 'BOOTS', 'COMMON', 45, 0, 0, 3, 0, 2, 'Êm ái, giảm chấn gối khi squat hoặc bật nhảy.', '👟'),
+        ('boots_leather_hunter', 'Ủng Da Thợ Săn', 'BOOTS', 'UNCOMMON', 95, 0, 1, 5, 3, 2, 'Bám chắc địa hình, giảm áp lực lên gót chân khi nhảy dây.', '👢'),
+        ('boots_iron', 'Hộ Chân Chiến Binh', 'BOOTS', 'RARE', 150, 0, 6, 7, 0, 0, 'Bọc thép mũi chân và ống quyển vững chãi như bàn thạch.', '🥾'),
+        ('boots_winged', 'Hài Phong Thần Hermes', 'BOOTS', 'EPIC', 380, 5, 0, 15, 6, 12, 'Đôi giày có cánh lướt đi nhẹ tựa lông hồng.', '🪽'),
+        ('boots_abyss', 'Bộ Bước Vực Thẳm', 'BOOTS', 'LEGENDARY', 950, 18, 18, 24, 0, 15, 'Mỗi bước chân để lại dư chấn khiến kẻ thù khiếp đảm.', '⚡'),
+        ('boots_shadow_stalker', 'Hư Không Bộ Pháp', 'BOOTS', 'MYTHIC', 2500, 50, 20, 35, 25, 30, 'Lướt đi giữa các chiều không gian, đôi chân không hề biết mỏi.', '⚡'),
+        ('boots_chronos', 'Hài Thời Gian Chronos', 'BOOTS', 'ANCIENT', 4600, 105, 30, 50, 45, 40, 'Bước chân thao túng thời gian, biến mỗi giây plank thành sức mạnh vô song.', '⏳'),
+        ('boots_celestial_stride', 'Tiêu Dao Thần Bộ', 'BOOTS', 'DIVINE', 8000, 180, 45, 75, 70, 65, 'Đạp mây cưỡi gió vượt qua ranh giới cõi phàm trần.', '🌟'),
+
+        # 5. AMULET
+        ('amulet_stone', 'Bùa Đá May Mắn', 'AMULET', 'COMMON', 50, 0, 0, 0, 0, 4, 'Hòn đá cuội ven suối đem lại vận may khi tập.', '🪬'),
+        ('amulet_wolf_tooth', 'Nanh Sói Hoang Dã', 'AMULET', 'UNCOMMON', 100, 0, 2, 2, 2, 6, 'Nanh sói đầu đàn mang lại giác quan nhạy bén và may mắn.', '🐺'),
+        ('amulet_ruby', 'Huyết Ngọc Hồi Phục', 'AMULET', 'RARE', 190, 0, 6, 6, 0, 5, 'Viên hồng ngọc đẩy nhanh tốc độ phục hồi cơ bắp.', '🔮'),
+        ('amulet_eye', 'Mắt Ưng Tinh Anh', 'AMULET', 'EPIC', 480, 7, 10, 0, 16, 10, 'Giúp nhìn rõ từng biên độ góc khớp chuẩn từng mi-li-mét.', '👁️'),
+        ('amulet_sun', 'Thái Dương Cổ Thạch', 'AMULET', 'LEGENDARY', 1300, 30, 20, 20, 20, 25, 'Cội nguồn sinh lực vĩnh cửu của mặt trời thiêu đốt.', '☀️'),
+        ('amulet_boss_heart', 'Trái Tim Hắc Long', 'AMULET', 'MYTHIC', 4000, 100, 30, 30, 30, 45, 'Tinh hoa sinh mệnh của Siêu Trùm Thế Giới ban phước lành.', '💎'),
+        ('amulet_ouroboros', 'Ngọc Bội Vô Cực Ouroboros', 'AMULET', 'ANCIENT', 5800, 140, 45, 45, 45, 60, 'Biểu tượng con rắn cắn đuôi luân hồi, sinh lực dồi dào bất tận.', '♾️'),
+        ('amulet_genesis_spark', 'Hỏa Chủng Sáng Thế', 'AMULET', 'DIVINE', 9900, 260, 70, 70, 70, 90, 'Tia lửa ban đầu thắp sáng muôn loài, gia tăng cực hạn mọi chỉ số.', '💥'),
+
+        # 6. WEAPON
+        ('weapon_stick', 'Côn Gỗ Luyện Tập', 'WEAPON', 'COMMON', 50, 0, 4, 0, 2, 0, 'Khúc gỗ sồi chắc nịch dùng để rèn luyện cổ tay.', '🪵'),
+        ('weapon_dagger', 'Dao Găm Sát Thủ', 'WEAPON', 'UNCOMMON', 100, 0, 7, 0, 5, 2, 'Lưỡi dao thép đen nhẹ bén, thích hợp luyện tập tốc độ cao.', '🗡️'),
+        ('weapon_sword', 'Thanh Kiếm Thép Đúc', 'WEAPON', 'RARE', 180, 0, 10, 0, 6, 0, 'Lưỡi kiếm sắc bén rèn từ lò luyện kim hoàng gia.', '⚔️'),
+        ('weapon_axe', 'Rìu Chiến Berserker', 'WEAPON', 'EPIC', 460, 6, 22, 8, 0, 0, 'Chiếc rìu khổng lồ dành riêng cho những chiến binh cuồng nộ.', '🪓'),
+        ('weapon_excalibur', 'Thánh Kiếm Excalibur', 'WEAPON', 'LEGENDARY', 1400, 30, 35, 0, 18, 15, 'Bảo kiếm huyền thoại cắm sâu trong đá, chỉ người xứng đáng mới rút được.', '🗡️'),
+        ('weapon_dragon_slayer', 'Đại Đao Trảm Long', 'WEAPON', 'MYTHIC', 3500, 80, 65, 15, 35, 25, 'Thần binh rèn từ vảy và răng Hắc Long, uy lực hủy thiên diệt địa.', '🗡️'),
+        ('weapon_gungnir', 'Thần Thương Gungnir', 'WEAPON', 'ANCIENT', 6000, 150, 85, 25, 60, 40, 'Ngọn thương thần thoại bách phát bách trúng, uy lực xuyên thủng mọi hàng phòng thủ.', '🔱'),
+        ('weapon_god_slayer', 'Đồ Thần Cực Kiếm', 'WEAPON', 'DIVINE', 10000, 300, 130, 40, 80, 70, 'Thần binh chí tôn trảm phá thần ma, đòn đánh xé rách thực tại.', '⚔️')
+    ]
+    c.executemany('INSERT OR REPLACE INTO items VALUES (?,?,?,?,?,?,?,?,?,?,?,?)', items_data)
+
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS guilds (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT UNIQUE,
+            slogan TEXT,
+            badge TEXT,
+            level INTEGER DEFAULT 1,
+            leader_id INTEGER,
+            created_at TEXT
+        )
+    ''')
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS guild_members (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            guild_id INTEGER,
+            user_id INTEGER UNIQUE,
+            role TEXT DEFAULT 'MEMBER',
+            joined_at TEXT
+        )
+    ''')
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS guild_join_requests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            guild_id INTEGER,
+            user_id INTEGER,
+            status TEXT DEFAULT 'PENDING',
+            created_at TEXT
+        )
+    ''')
     c.execute('''
         CREATE TABLE IF NOT EXISTS guild_boss (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -132,16 +193,16 @@ def init_db():
         )
     ''')
 
-    # Seed default guild boss
+    # Seed default guild and member for user 1
+    c.execute('INSERT OR IGNORE INTO guilds (id, name, slogan, badge, level, leader_id, created_at) VALUES (1, "Thiên Đình Vigil", "Tập luyện bất tử - Đồ sát cự long", "🛡️", 5, 1, datetime("now"))')
+    c.execute('INSERT OR IGNORE INTO guild_members (id, guild_id, user_id, role, joined_at) VALUES (1, 1, 1, "LEADER", datetime("now"))')
+
+    # Seed default guild boss with full HP, no fake damage
     c.execute('SELECT COUNT(*) FROM guild_boss')
     if c.fetchone()[0] == 0:
         c.execute('''
             INSERT INTO guild_boss (id, guild_id, boss_id, boss_name, boss_title, boss_avatar, max_hp, current_hp, status, reward_gold, reward_gems, reward_item_id, created_at)
-            VALUES (1, 1, "boss_nether_dragon", "Hắc Long Viễn Cổ - Nidhogg", "SIÊU TRÙM THẾ GIỚI BANG HỘI", "🐉", 500000, 385000, "ACTIVE", 15000, 350, "weapon_dragon_slayer", datetime("now"))
-        ''')
-        c.execute('''
-            INSERT INTO guild_boss_damage (guild_id, boss_db_id, user_id, damage, reps_contributed, has_claimed_defeat_reward)
-            VALUES (1, 1, 2, 115000, 120, 0)
+            VALUES (1, 1, "boss_nether_dragon", "Hắc Long Viễn Cổ - Nidhogg", "SIÊU TRÙM THẾ GIỚI BANG HỘI", "🐉", 500000, 500000, "ACTIVE", 15000, 350, "weapon_dragon_slayer", datetime("now"))
         ''')
 
     c.execute('INSERT OR IGNORE INTO users (id, username, gold, gems, xp, level, streak, total_reps, stage) VALUES (1, "Hachimi", 200, 10, 0, 1, 0, 0, 1)')
@@ -313,6 +374,23 @@ class RequestHandler(BaseHTTPRequestHandler):
                 'contributors': contributors,
                 'myContribution': my_contrib
             })
+        elif self.path.startswith('/api/guilds/applications/'):
+            # /api/guilds/applications/<guild_id>
+            try:
+                guild_id = int(self.path.split('/')[-1])
+            except Exception:
+                guild_id = 1
+            c.execute('''
+                SELECT r.id, r.guild_id, r.user_id, r.status, r.created_at,
+                       u.username, u.avatar, u.level, u.total_reps, g.name as guild_name
+                FROM guild_join_requests r
+                JOIN users u ON r.user_id = u.id
+                JOIN guilds g ON r.guild_id = g.id
+                WHERE r.guild_id = ? AND r.status = 'PENDING'
+                ORDER BY r.id DESC
+            ''', (guild_id,))
+            rows = [dict(r) for r in c.fetchall()]
+            self._send_json({'success': True, 'applications': rows})
         else:
             self._send_json({'error': 'Not found'}, 404)
         conn.close()
@@ -403,16 +481,38 @@ class RequestHandler(BaseHTTPRequestHandler):
 
             dropped_item = None
             if random.random() <= drop_chance:
-                # Rarity roll
+                # Rarity roll (8 phẩm cấp)
                 roll = random.random()
-                if roll < 0.05 + total_luck * 0.001:
-                    rarity = 'LEGENDARY'
-                elif roll < 0.25 + total_luck * 0.002:
-                    rarity = 'EPIC'
-                elif roll < 0.60:
-                    rarity = 'RARE'
+                if is_boss:
+                    luck_factor = total_luck * 0.001
+                    if roll < 0.01 + luck_factor * 0.1:
+                        rarity = 'DIVINE'
+                    elif roll < 0.04 + luck_factor * 0.2:
+                        rarity = 'ANCIENT'
+                    elif roll < 0.10 + luck_factor * 0.3:
+                        rarity = 'MYTHIC'
+                    elif roll < 0.22 + luck_factor * 0.4:
+                        rarity = 'LEGENDARY'
+                    elif roll < 0.45:
+                        rarity = 'EPIC'
+                    elif roll < 0.75:
+                        rarity = 'RARE'
+                    else:
+                        rarity = 'UNCOMMON'
                 else:
-                    rarity = 'COMMON'
+                    luck_factor = total_luck * 0.0005
+                    if roll < 0.002 + luck_factor * 0.05:
+                        rarity = 'MYTHIC'
+                    elif roll < 0.015 + luck_factor * 0.1:
+                        rarity = 'LEGENDARY'
+                    elif roll < 0.08 + luck_factor * 0.2:
+                        rarity = 'EPIC'
+                    elif roll < 0.25:
+                        rarity = 'RARE'
+                    elif roll < 0.60:
+                        rarity = 'UNCOMMON'
+                    else:
+                        rarity = 'COMMON'
 
                 c.execute('SELECT * FROM items WHERE rarity = ? ORDER BY RANDOM() LIMIT 1', (rarity,))
                 item = c.fetchone()
@@ -579,6 +679,76 @@ class RequestHandler(BaseHTTPRequestHandler):
                 'success': True,
                 'message': f"🔥 Tiếng gầm thét rung chuyển! {tpl[1]} đã giáng lâm khiêu chiến bang hội!"
             })
+        elif self.path == '/api/guilds/apply':
+            guild_id = int(body.get('guildId', 1))
+            username = body.get('username', 'Hachimi')
+            c.execute('SELECT * FROM users WHERE username = ?', (username,))
+            user = c.fetchone()
+            if not user:
+                self._send_json({'error': 'Không tìm thấy người chơi!'}, 404)
+                conn.close()
+                return
+
+            c.execute('SELECT * FROM guild_members WHERE user_id = ?', (user['id'],))
+            if c.fetchone():
+                self._send_json({'error': 'Bạn đã tham gia một bang hội rồi!'}, 400)
+                conn.close()
+                return
+
+            c.execute('SELECT * FROM guild_join_requests WHERE guild_id = ? AND user_id = ? AND status = "PENDING"', (guild_id, user['id']))
+            if c.fetchone():
+                self._send_json({'error': 'Bạn đã gửi đơn xin vào bang này rồi, vui lòng chờ duyệt!'}, 400)
+                conn.close()
+                return
+
+            c.execute('INSERT INTO guild_join_requests (guild_id, user_id, status, created_at) VALUES (?, ?, "PENDING", ?)',
+                      (guild_id, user['id'], datetime.now().isoformat()))
+            conn.commit()
+            self._send_json({'success': True, 'message': 'Đã gửi đơn xin gia nhập! Đang chờ Chủ bang phê duyệt.'})
+
+        elif self.path == '/api/guilds/cancel-application':
+            username = body.get('username', 'Hachimi')
+            guild_id = body.get('guildId')
+            app_id = body.get('applicationId')
+            c.execute('SELECT * FROM users WHERE username = ?', (username,))
+            user = c.fetchone()
+            if not user:
+                self._send_json({'error': 'Không tìm thấy người chơi!'}, 404)
+                conn.close()
+                return
+
+            if app_id:
+                c.execute('DELETE FROM guild_join_requests WHERE id = ? AND user_id = ?', (app_id, user['id']))
+            elif guild_id:
+                c.execute('DELETE FROM guild_join_requests WHERE guild_id = ? AND user_id = ?', (guild_id, user['id']))
+            conn.commit()
+            self._send_json({'success': True, 'message': 'Đã hủy đơn xin gia nhập bang hội.'})
+
+        elif self.path == '/api/guilds/approve-application':
+            app_id = body.get('applicationId')
+            c.execute('SELECT * FROM guild_join_requests WHERE id = ?', (app_id,))
+            app_row = c.fetchone()
+            if not app_row:
+                self._send_json({'error': 'Không tìm thấy đơn xin gia nhập!'}, 404)
+                conn.close()
+                return
+
+            c.execute('INSERT OR IGNORE INTO guild_members (guild_id, user_id, role) VALUES (?, ?, "MEMBER")',
+                      (app_row['guild_id'], app_row['user_id']))
+            c.execute('UPDATE guild_join_requests SET status = "ACCEPTED" WHERE id = ?', (app_id,))
+            c.execute('DELETE FROM guild_join_requests WHERE user_id = ? AND id != ?', (app_row['user_id'], app_id))
+
+            c.execute('SELECT username FROM users WHERE id = ?', (app_row['user_id'],))
+            applicant = c.fetchone()
+            name = applicant['username'] if applicant else 'Thành viên mới'
+            conn.commit()
+            self._send_json({'success': True, 'message': f'Đã phê duyệt {name} gia nhập bang hội!'})
+
+        elif self.path == '/api/guilds/reject-application':
+            app_id = body.get('applicationId')
+            c.execute('UPDATE guild_join_requests SET status = "REJECTED" WHERE id = ?', (app_id,))
+            conn.commit()
+            self._send_json({'success': True, 'message': 'Đã từ chối đơn xin gia nhập bang hội.'})
         else:
             self._send_json({'error': 'Not found'}, 404)
         conn.close()

@@ -16,6 +16,7 @@ import com.example.vigil.model.GuildBoss
 import com.example.vigil.model.GuildBossContribution
 import com.example.vigil.model.GuildBossInfo
 import com.example.vigil.model.GuildInvitationEntry
+import com.example.vigil.model.GuildJoinApplication
 import com.example.vigil.model.GuildMember
 import com.example.vigil.model.InventoryItem
 import com.example.vigil.model.Item
@@ -68,6 +69,8 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
     var outgoingGuildInvitations by mutableStateOf<List<OutgoingGuildInvitation>>(emptyList())
     var showCreateGuildDialog by mutableStateOf(false)
     var showInviteMemberDialog by mutableStateOf(false)
+    var pendingGuildApplications by mutableStateOf<List<GuildJoinApplication>>(emptyList())
+    var myPendingGuildApplications by mutableStateOf<List<GuildJoinApplication>>(emptyList())
     var guildBossInfo by mutableStateOf<GuildBossInfo?>(null)
     var showGuildBossExerciseDialog by mutableStateOf(false)
 
@@ -207,12 +210,28 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
         outgoingFriendRequests = db.getOutgoingFriendRequests(currentUserId)
         leaderboardList = db.getLeaderboard(currentUserId, leaderboardSortBy)
 
-        // Nạp bang hội & lời mời bang hội
+        // Nạp bang hội, lời mời & đơn xin gia nhập bang
         userGuild = db.getUserGuild(currentUserId)
         allGuilds = db.getAllGuilds(currentUserId)
         guildMembers = if (userGuild != null) db.getGuildMembers(userGuild!!.id) else emptyList()
         incomingGuildInvitations = db.getIncomingGuildInvitations(currentUserId)
         outgoingGuildInvitations = if (userGuild != null) db.getOutgoingGuildInvitations(userGuild!!.id) else emptyList()
+        pendingGuildApplications = if (userGuild != null && userGuild!!.isUserLeader) {
+            db.getPendingGuildApplications(userGuild!!.id)
+        } else {
+            emptyList()
+        }
+        myPendingGuildApplications = db.getMyPendingGuildApplications(currentUserId)
+
+        if (userGuild != null && userGuild!!.isUserLeader) {
+            val leaderGuildId = userGuild!!.id
+            viewModelScope.launch {
+                val remoteApps = ApiClient.getPendingGuildApplications(leaderGuildId)
+                if (remoteApps.isNotEmpty()) {
+                    pendingGuildApplications = remoteApps
+                }
+            }
+        }
 
         // Nạp thông tin Siêu Trùm Thế Giới của Bang Hội
         val bossGuildId = userGuild?.id ?: 1
@@ -481,6 +500,80 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
             toastMessage = "Đã thu hồi lời mời gia nhập bang."
             if (userGuild != null) {
                 outgoingGuildInvitations = db.getOutgoingGuildInvitations(userGuild!!.id)
+            }
+            return true
+        }
+        return false
+    }
+
+    // =========================================================================
+    // QUẢN LÝ ĐƠN XIN GIA NHẬP BANG HỘI (GUILD JOIN APPLICATIONS)
+    // =========================================================================
+
+    fun applyToGuild(guildId: Int): Boolean {
+        val (success, msg) = db.applyToGuild(currentUserId, guildId)
+        toastMessage = msg
+        if (success) {
+            allGuilds = db.getAllGuilds(currentUserId)
+            myPendingGuildApplications = db.getMyPendingGuildApplications(currentUserId)
+            viewModelScope.launch {
+                ApiClient.applyToGuild(name, guildId)
+            }
+            return true
+        }
+        return false
+    }
+
+    fun cancelGuildApplication(guildId: Int): Boolean {
+        val (success, msg) = db.cancelGuildApplication(currentUserId, guildId)
+        toastMessage = msg
+        if (success) {
+            allGuilds = db.getAllGuilds(currentUserId)
+            myPendingGuildApplications = db.getMyPendingGuildApplications(currentUserId)
+            viewModelScope.launch {
+                ApiClient.cancelGuildApplication(name, guildId, null)
+            }
+            return true
+        }
+        return false
+    }
+
+    fun cancelGuildApplicationById(applicationId: Int): Boolean {
+        val (success, msg) = db.cancelGuildApplicationById(currentUserId, applicationId)
+        toastMessage = msg
+        if (success) {
+            allGuilds = db.getAllGuilds(currentUserId)
+            myPendingGuildApplications = db.getMyPendingGuildApplications(currentUserId)
+            viewModelScope.launch {
+                ApiClient.cancelGuildApplication(name, null, applicationId)
+            }
+            return true
+        }
+        return false
+    }
+
+    fun approveGuildApplication(applicationId: Int): Boolean {
+        val (success, msg) = db.approveGuildApplication(currentUserId, applicationId)
+        toastMessage = msg
+        if (success) {
+            loadDataFromSql()
+            viewModelScope.launch {
+                ApiClient.approveGuildApplication(name, applicationId)
+            }
+            return true
+        }
+        return false
+    }
+
+    fun rejectGuildApplication(applicationId: Int): Boolean {
+        val (success, msg) = db.rejectGuildApplication(currentUserId, applicationId)
+        toastMessage = msg
+        if (success) {
+            if (userGuild != null) {
+                pendingGuildApplications = db.getPendingGuildApplications(userGuild!!.id)
+            }
+            viewModelScope.launch {
+                ApiClient.rejectGuildApplication(name, applicationId)
             }
             return true
         }

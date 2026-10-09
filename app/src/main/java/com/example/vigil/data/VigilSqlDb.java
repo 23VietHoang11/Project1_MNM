@@ -14,6 +14,7 @@ import com.example.vigil.model.GuildBoss;
 import com.example.vigil.model.GuildBossContribution;
 import com.example.vigil.model.GuildBossInfo;
 import com.example.vigil.model.GuildInvitationEntry;
+import com.example.vigil.model.GuildJoinApplication;
 import com.example.vigil.model.GuildMember;
 import com.example.vigil.model.InventoryItem;
 import com.example.vigil.model.Item;
@@ -46,7 +47,7 @@ import kotlin.Pair;
 public class VigilSqlDb extends SQLiteOpenHelper {
 
     public static final String DATABASE_NAME = "vigil_app.db";
-    public static final int DATABASE_VERSION = 5;
+    public static final int DATABASE_VERSION = 6;
 
 
     private static volatile VigilSqlDb INSTANCE;
@@ -242,12 +243,20 @@ public class VigilSqlDb extends SQLiteOpenHelper {
                 "FOREIGN KEY (user_id) REFERENCES users(id)" +
                 ");");
 
+        // 15. Bảng guild_join_requests (Đơn xin gia nhập bang hội cần Chủ bang phê duyệt)
+        db.execSQL("CREATE TABLE IF NOT EXISTS guild_join_requests (" +
+                "id INTEGER PRIMARY KEY AUTOINCREMENT, " +
+                "guild_id INTEGER NOT NULL, " +
+                "user_id INTEGER NOT NULL, " +
+                "status TEXT NOT NULL DEFAULT 'PENDING', " +
+                "created_at TEXT, " +
+                "UNIQUE(guild_id, user_id), " +
+                "FOREIGN KEY (guild_id) REFERENCES guilds(id), " +
+                "FOREIGN KEY (user_id) REFERENCES users(id)" +
+                ");");
+
         seedItems(db);
         seedInitialUser(db);
-        seedSampleLeaderboardUsers(db);
-        seedSampleGuilds(db);
-        seedSampleGuildBosses(db);
-        seedSampleRequests(db);
         seedSampleWorkouts(db);
     }
 
@@ -265,7 +274,6 @@ public class VigilSqlDb extends SQLiteOpenHelper {
                     "FOREIGN KEY (user_id) REFERENCES users(id), " +
                     "FOREIGN KEY (friend_id) REFERENCES users(id)" +
                     ");");
-            seedSampleLeaderboardUsers(db);
         }
         if (oldVersion < 3) {
             db.execSQL("CREATE TABLE IF NOT EXISTS guilds (" +
@@ -286,7 +294,6 @@ public class VigilSqlDb extends SQLiteOpenHelper {
                     "FOREIGN KEY (guild_id) REFERENCES guilds(id), " +
                     "FOREIGN KEY (user_id) REFERENCES users(id)" +
                     ");");
-            seedSampleGuilds(db);
         }
         if (oldVersion < 4) {
             db.execSQL("CREATE TABLE IF NOT EXISTS friend_requests (" +
@@ -311,8 +318,6 @@ public class VigilSqlDb extends SQLiteOpenHelper {
                     "FOREIGN KEY (inviter_id) REFERENCES users(id), " +
                     "FOREIGN KEY (invitee_id) REFERENCES users(id)" +
                     ");");
-            seedSampleRequests(db);
-            seedSampleWorkouts(db);
         }
         if (oldVersion < 5) {
             db.execSQL("CREATE TABLE IF NOT EXISTS guild_boss (" +
@@ -346,11 +351,40 @@ public class VigilSqlDb extends SQLiteOpenHelper {
                     "FOREIGN KEY (boss_db_id) REFERENCES guild_boss(id), " +
                     "FOREIGN KEY (user_id) REFERENCES users(id)" +
                     ");");
+        }
+        if (oldVersion < 6) {
+            db.execSQL("CREATE TABLE IF NOT EXISTS guild_join_requests (" +
+                    "id INTEGER PRIMARY KEY AUTOINCREMENT, " +
+                    "guild_id INTEGER NOT NULL, " +
+                    "user_id INTEGER NOT NULL, " +
+                    "status TEXT NOT NULL DEFAULT 'PENDING', " +
+                    "created_at TEXT, " +
+                    "UNIQUE(guild_id, user_id), " +
+                    "FOREIGN KEY (guild_id) REFERENCES guilds(id), " +
+                    "FOREIGN KEY (user_id) REFERENCES users(id)" +
+                    ");");
+
+            // Xóa sạch toàn bộ bot users ảo: 'ShadowBlade', 'ValkyrieGym', 'IronTitan', 'DragonFit', 'Phoenix'
+            db.execSQL("DELETE FROM users WHERE username IN ('ShadowBlade', 'ValkyrieGym', 'IronTitan', 'DragonFit', 'Phoenix');");
+            db.execSQL("DELETE FROM friends WHERE user_id NOT IN (SELECT id FROM users) OR friend_id NOT IN (SELECT id FROM users);");
+            db.execSQL("DELETE FROM friend_requests WHERE sender_id NOT IN (SELECT id FROM users) OR receiver_id NOT IN (SELECT id FROM users);");
+            db.execSQL("DELETE FROM guild_invitations WHERE inviter_id NOT IN (SELECT id FROM users) OR invitee_id NOT IN (SELECT id FROM users);");
+            db.execSQL("DELETE FROM guild_members WHERE user_id NOT IN (SELECT id FROM users);");
+            db.execSQL("DELETE FROM guilds WHERE leader_id NOT IN (SELECT id FROM users);");
+            db.execSQL("DELETE FROM guild_boss_damage WHERE user_id NOT IN (SELECT id FROM users);");
+
+            // Đảm bảo user 1 có bang hội và boss
+            db.execSQL("INSERT OR IGNORE INTO guilds (id, name, badge, slogan, leader_id, level, created_at) " +
+                    "VALUES (1, 'Thiên Đình Vigil', '🛡️', 'Tập luyện bất tử - Đồ sát cự long', 1, 5, date('now'));");
+            db.execSQL("INSERT OR IGNORE INTO guild_members (id, guild_id, user_id, role, joined_at) " +
+                    "VALUES (1, 1, 1, 'LEADER', date('now'));");
+            db.execSQL("INSERT OR IGNORE INTO guild_boss (id, guild_id, boss_id, boss_name, boss_title, boss_avatar, max_hp, current_hp, status, reward_gold, reward_gems, reward_item_id, created_at) " +
+                    "VALUES (1, 1, 'boss_nether_dragon', 'Hắc Long Viễn Cổ - Nidhogg', 'SIÊU TRÙM THẾ GIỚI BANG HỘI', '🐉', 500000, 500000, 'ACTIVE', 15000, 350, 'weapon_dragon_slayer', date('now'));");
+
+            // Cập nhật lại 48 vật phẩm
             seedItems(db);
-            seedSampleGuildBosses(db);
         }
     }
-
 
     private void seedInitialUser(SQLiteDatabase db) {
         ContentValues cv = new ContentValues();
@@ -374,102 +408,108 @@ public class VigilSqlDb extends SQLiteOpenHelper {
         invCv.put("is_equipped", 1);
         invCv.put("acquired_at", LocalDate.now().toString());
         db.insertWithOnConflict("user_inventory", null, invCv, SQLiteDatabase.CONFLICT_IGNORE);
-    }
 
-    private static class SampleLeader {
-        String name;
-        int level;
-        int reps;
-        String avatar;
-        int streak;
-        int gold;
-        SampleLeader(String name, int level, int reps, String avatar, int streak, int gold) {
-            this.name = name; this.level = level; this.reps = reps;
-            this.avatar = avatar; this.streak = streak; this.gold = gold;
-        }
+        // Guild mặc định cho Hachimi
+        ContentValues gCv = new ContentValues();
+        gCv.put("id", 1);
+        gCv.put("name", "Thiên Đình Vigil");
+        gCv.put("badge", "🛡️");
+        gCv.put("slogan", "Tập luyện bất tử - Đồ sát cự long");
+        gCv.put("leader_id", 1);
+        gCv.put("level", 5);
+        gCv.put("created_at", LocalDate.now().toString());
+        db.insertWithOnConflict("guilds", null, gCv, SQLiteDatabase.CONFLICT_IGNORE);
+
+        ContentValues mCv = new ContentValues();
+        mCv.put("guild_id", 1);
+        mCv.put("user_id", 1);
+        mCv.put("role", "LEADER");
+        mCv.put("joined_at", LocalDate.now().toString());
+        db.insertWithOnConflict("guild_members", null, mCv, SQLiteDatabase.CONFLICT_IGNORE);
+
+        // Boss thế giới mặc định cho bang 1 (máu 500.000 đầy đủ)
+        ContentValues bCv = new ContentValues();
+        bCv.put("id", 1);
+        bCv.put("guild_id", 1);
+        bCv.put("boss_id", "boss_nether_dragon");
+        bCv.put("boss_name", "Hắc Long Viễn Cổ - Nidhogg");
+        bCv.put("boss_title", "SIÊU TRÙM THẾ GIỚI BANG HỘI");
+        bCv.put("boss_avatar", "🐉");
+        bCv.put("max_hp", 500000);
+        bCv.put("current_hp", 500000);
+        bCv.put("status", "ACTIVE");
+        bCv.put("reward_gold", 15000);
+        bCv.put("reward_gems", 350);
+        bCv.put("reward_item_id", "weapon_dragon_slayer");
+        bCv.put("created_at", LocalDate.now().toString());
+        db.insertWithOnConflict("guild_boss", null, bCv, SQLiteDatabase.CONFLICT_IGNORE);
     }
 
     private void seedSampleLeaderboardUsers(SQLiteDatabase db) {
-        List<SampleLeader> sampleUsers = Arrays.asList(
-                new SampleLeader("ShadowBlade", 9, 380, "🥷", 12, 850),
-                new SampleLeader("ValkyrieGym", 8, 310, "👑", 8, 700),
-                new SampleLeader("IronTitan", 7, 260, "🗿", 5, 450),
-                new SampleLeader("DragonFit", 6, 190, "🐉", 4, 320),
-                new SampleLeader("Phoenix", 4, 110, "🔥", 2, 220)
-        );
-
-        for (int idx = 0; idx < sampleUsers.size(); idx++) {
-            SampleLeader s = sampleUsers.get(idx);
-            ContentValues uCv = new ContentValues();
-            uCv.put("id", idx + 2);
-            uCv.put("username", s.name);
-            uCv.put("password", "123456");
-            uCv.put("avatar", s.avatar);
-            uCv.put("gold", s.gold);
-            uCv.put("gems", 10);
-            uCv.put("xp", 60);
-            uCv.put("level", s.level);
-            uCv.put("streak", s.streak);
-            uCv.put("total_reps", s.reps);
-            uCv.put("stage", s.level - 1);
-            uCv.put("last_workout_date", LocalDate.now().toString());
-            db.insertWithOnConflict("users", null, uCv, SQLiteDatabase.CONFLICT_IGNORE);
-        }
-
-        ContentValues f1 = new ContentValues();
-        f1.put("user_id", 1);
-        f1.put("friend_id", 4);
-        f1.put("created_at", LocalDate.now().toString());
-        ContentValues f2 = new ContentValues();
-        f2.put("user_id", 4);
-        f2.put("friend_id", 1);
-        f2.put("created_at", LocalDate.now().toString());
-        db.insertWithOnConflict("friends", null, f1, SQLiteDatabase.CONFLICT_IGNORE);
-        db.insertWithOnConflict("friends", null, f2, SQLiteDatabase.CONFLICT_IGNORE);
+        // Chỉ lưu giữ các tài khoản do người dùng tạo, không chèn tài khoản ảo mẫu
     }
 
     private void seedItems(SQLiteDatabase db) {
         List<Item> itemsList = Arrays.asList(
-                // MŨ GIÁP
+                // 1. MŨ GIÁP (HELMET) - 8 Phẩm Cấp
                 new Item("helm_bronze", "Mũ Đồng Tân Binh", ItemSlot.HELMET, Rarity.COMMON, 50, 0, 0, 3, 0, 1, "Mũ đồng đúc thô sơ che chắn đầu khi tập nặng.", "🪖"),
+                new Item("helm_scout", "Nón Trinh Sát Rừng Rậm", ItemSlot.HELMET, Rarity.UNCOMMON, 90, 0, 0, 5, 2, 1, "Nón vải ngụy trang nhẹ nhàng cho các buổi cardio dã ngoại.", "🧢"),
                 new Item("helm_iron", "Thiết Giáp Đầu", ItemSlot.HELMET, Rarity.RARE, 160, 0, 3, 7, 0, 2, "Rèn từ sắt non tôi luyện nhiệt độ cao.", "⛑️"),
                 new Item("helm_valkyrie", "Mũ Lông Vũ Valkyrie", ItemSlot.HELMET, Rarity.EPIC, 420, 5, 5, 14, 0, 8, "Ban phước bởi nữ thần chiến trận phương Bắc.", "👑"),
-                new Item("helm_dragon", "Vương Miện Long Thần", ItemSlot.HELMET, Rarity.LEGENDARY, 1000, 20, 18, 25, 0, 12, "Tỏa ra uy áp của loài rồng cổ đại, tăng cực đại thể lực.", "🐉"),
+                new Item("helm_dragon", "Vương Miện Long Thần", ItemSlot.HELMET, Rarity.LEGENDARY, 1000, 20, 20, 18, 25, 12, "Tỏa ra uy áp của loài rồng cổ đại, tăng cực đại thể lực.", "🐉"),
+                new Item("helm_abyss", "Vương Miện Vực Sâu", ItemSlot.HELMET, Rarity.MYTHIC, 2800, 60, 35, 40, 15, 20, "Ngưng tụ từ hắc ám vô tận dưới đáy vực, bảo hộ tuyệt đối tinh thần.", "👑"),
+                new Item("helm_odin", "Mũ Thần Chiến Binh Odin", ItemSlot.HELMET, Rarity.ANCIENT, 5000, 120, 50, 55, 30, 35, "Bảo vật của Vua các vị thần, khai mở trí tuệ và thể lực siêu phàm.", "🦅"),
+                new Item("helm_divine_crown", "Thần Quan Thiên Giới", ItemSlot.HELMET, Rarity.DIVINE, 8500, 200, 75, 80, 50, 60, "Vương miện của Đấng Tối Cao, hội tụ hào quang thái hư bảo bọc.", "✨"),
 
-                // GIÁP NGỰC
+                // 2. GIÁP NGỰC (ARMOR) - 8 Phẩm Cấp
                 new Item("armor_leather", "Áo Da Dã Ngoại", ItemSlot.ARMOR, Rarity.COMMON, 60, 0, 0, 4, 2, 0, "Áo da bò mềm mại, thoáng mát cho buổi hít đất dài.", "🥋"),
+                new Item("armor_chainmail", "Áo Giáp Xích Bạc", ItemSlot.ARMOR, Rarity.UNCOMMON, 110, 0, 2, 7, 1, 0, "Kết từ hàng nghìn vòng xích thép dẻo dai phân tán lực va đập.", "⛓️"),
                 new Item("armor_plate", "Chiến Giáp Thép Nung", ItemSlot.ARMOR, Rarity.RARE, 180, 0, 5, 10, 0, 0, "Tấm giáp kiên cố bảo vệ cơ hoành và lưng dưới.", "🛡️"),
                 new Item("armor_shadow", "Áo Choàng Bóng Đêm", ItemSlot.ARMOR, Rarity.EPIC, 450, 6, 10, 0, 12, 8, "Hòa mình vào bóng tối, tăng tập trung và chuẩn xác.", "🥷"),
                 new Item("armor_celestial", "Thánh Giáp Quang Minh", ItemSlot.ARMOR, Rarity.LEGENDARY, 1200, 25, 20, 28, 15, 0, "Ánh hào quang chiếu rọi bảo bọc chiến binh bền bỉ.", "✨"),
+                new Item("armor_dragon_scale", "Long Lân Thần Giáp", ItemSlot.ARMOR, Rarity.MYTHIC, 3200, 75, 25, 60, 15, 20, "Lớp vảy rồng kiên cố bất khả xâm phạm bảo vệ toàn thân.", "🐲"),
+                new Item("armor_aegis", "Thánh Giáp Bất Hoại Aegis", ItemSlot.ARMOR, Rarity.ANCIENT, 5500, 130, 40, 80, 25, 35, "Tấm khiên giáp huyền thoại của thần Zeus, chặn đứng mọi ngoại lực.", "🛡️"),
+                new Item("armor_primordial", "Hỗn Nguyên Chiến Giáp", ItemSlot.ARMOR, Rarity.DIVINE, 9500, 240, 65, 120, 45, 60, "Rèn từ vật chất khởi thủy trước khi vũ trụ hình thành, bất hoại vĩnh cửu.", "🌌"),
 
-                // GĂNG TAY
+                // 3. GĂNG TAY (GLOVES) - 8 Phẩm Cấp
                 new Item("gloves_cloth", "Băng Quấn Cổ Tay", ItemSlot.GLOVES, Rarity.COMMON, 40, 0, 3, 0, 2, 0, "Bảo vệ khớp cổ tay khi chống đẩy trên sàn cứng.", "🥊"),
+                new Item("gloves_leather_strap", "Găng Đấu Khí Thiếu Niên", ItemSlot.GLOVES, Rarity.UNCOMMON, 80, 0, 5, 0, 4, 1, "Găng da dê bọc khớp tăng uy lực cú đấm và chống đẩy.", "🥊"),
                 new Item("gloves_grip", "Găng Hít Đất Siêu Bám", ItemSlot.GLOVES, Rarity.RARE, 150, 0, 8, 0, 6, 0, "Đế cao su hạt kim cương chống trượt tay hoàn đối.", "🧤"),
                 new Item("gloves_titan", "Găng Titan Siêu Lực", ItemSlot.GLOVES, Rarity.EPIC, 400, 5, 18, 0, 8, 3, "Khung titan trợ lực giúp bùng nổ lực đẩy cánh tay.", "🦾"),
                 new Item("gloves_infinity", "Găng Tay Vô Cực", ItemSlot.GLOVES, Rarity.LEGENDARY, 1100, 22, 32, 0, 16, 14, "Nắm giữ sức mạnh vũ trụ gom tụ trong từng thớ cơ.", "🌌"),
+                new Item("gloves_dragon_claw", "Vuốt Rồng Bạt Hải", ItemSlot.GLOVES, Rarity.MYTHIC, 2600, 55, 50, 10, 30, 25, "Móng vuốt rồng thiêng xé toạc hư không, bùng nổ lực đẩy tay.", "🐉"),
+                new Item("gloves_thunder_strike", "Quyền Thủ Lôi Thần Thor", ItemSlot.GLOVES, Rarity.ANCIENT, 4800, 110, 75, 20, 40, 30, "Găng sắt thần thánh giúp vung sấm sét ngàn cân dễ như trở bàn tay.", "⚡"),
+                new Item("gloves_creator", "Thủ Ấn Khởi Nguyên", ItemSlot.GLOVES, Rarity.DIVINE, 8200, 190, 110, 35, 65, 55, "Bàn tay nhào nặn tinh cầu, chuyển hóa từng nhịp đẩy thành siêu sóng xung kích.", "☄️"),
 
-                // GIÀY
+                // 4. GIÀY (BOOTS) - 8 Phẩm Cấp
                 new Item("boots_runner", "Giày Chạy Phản Lực", ItemSlot.BOOTS, Rarity.COMMON, 45, 0, 0, 3, 0, 2, "Êm ái, giảm chấn gối khi squat hoặc bật nhảy.", "👟"),
+                new Item("boots_leather_hunter", "Ủng Da Thợ Săn", ItemSlot.BOOTS, Rarity.UNCOMMON, 95, 0, 1, 5, 3, 2, "Bám chắc địa hình, giảm áp lực lên gót chân khi nhảy dây.", "👢"),
                 new Item("boots_iron", "Hộ Chân Chiến Binh", ItemSlot.BOOTS, Rarity.RARE, 150, 0, 6, 7, 0, 0, "Bọc thép mũi chân và ống quyển vững chãi.", "🥾"),
                 new Item("boots_winged", "Hài Phong Thần Hermes", ItemSlot.BOOTS, Rarity.EPIC, 380, 5, 0, 15, 6, 12, "Đôi giày có cánh lướt đi nhẹ tựa lông hồng.", "🪽"),
                 new Item("boots_abyss", "Bộ Bước Vực Thẳm", ItemSlot.BOOTS, Rarity.LEGENDARY, 950, 18, 18, 24, 0, 15, "Mỗi bước chân để lại uy chấn khiến kẻ thù khiếp đảm.", "⚡"),
+                new Item("boots_shadow_stalker", "Hư Không Bộ Pháp", ItemSlot.BOOTS, Rarity.MYTHIC, 2500, 50, 20, 35, 25, 30, "Lướt đi giữa các chiều không gian, đôi chân không hề biết mỏi.", "⚡"),
+                new Item("boots_chronos", "Hài Thời Gian Chronos", ItemSlot.BOOTS, Rarity.ANCIENT, 4600, 105, 30, 50, 45, 40, "Bước chân thao túng thời gian, biến mỗi giây plank thành sức mạnh vô song.", "⏳"),
+                new Item("boots_celestial_stride", "Tiêu Dao Thần Bộ", ItemSlot.BOOTS, Rarity.DIVINE, 8000, 180, 45, 75, 70, 65, "Đạp mây cưỡi gió vượt qua ranh giới cõi phàm trần.", "🌟"),
 
-                // BÙA CHÚ
+                // 5. BÙA CHÚ (AMULET) - 8 Phẩm Cấp
                 new Item("amulet_stone", "Bùa Đá May Mắn", ItemSlot.AMULET, Rarity.COMMON, 50, 0, 0, 0, 0, 4, "Hòn đá cuội ven suối đem lại vận may khi tập.", "🪬"),
+                new Item("amulet_wolf_tooth", "Nanh Sói Hoang Dã", ItemSlot.AMULET, Rarity.UNCOMMON, 100, 0, 2, 2, 2, 6, "Nanh sói đầu đàn mang lại giác quan nhạy bén và may mắn.", "🐺"),
                 new Item("amulet_ruby", "Huyết Ngọc Hồi Phục", ItemSlot.AMULET, Rarity.RARE, 190, 0, 6, 6, 0, 5, "Viên hồng ngọc đẩy nhanh tốc độ phục hồi cơ bắp.", "🔮"),
                 new Item("amulet_eye", "Mắt Ưng Tinh Anh", ItemSlot.AMULET, Rarity.EPIC, 480, 7, 10, 0, 16, 10, "Giúp nhìn rõ từng biên độ góc khớp chuẩn từng mm.", "👁️"),
                 new Item("amulet_sun", "Thái Dương Cổ Thạch", ItemSlot.AMULET, Rarity.LEGENDARY, 1300, 30, 20, 20, 20, 25, "Cội nguồn sinh lực vĩnh cửu của mặt trời thiêu đốt.", "☀️"),
+                new Item("amulet_boss_heart", "Trái Tim Hắc Long", ItemSlot.AMULET, Rarity.MYTHIC, 4000, 100, 30, 30, 30, 45, "Tinh hoa sinh mệnh của Siêu Trùm Thế Giới ban phước lành.", "💎"),
+                new Item("amulet_ouroboros", "Ngọc Bội Vô Cực Ouroboros", ItemSlot.AMULET, Rarity.ANCIENT, 5800, 140, 45, 45, 45, 60, "Biểu tượng con rắn cắn đuôi luân hồi, sinh lực dồi dào bất tận.", "♾️"),
+                new Item("amulet_genesis_spark", "Hỏa Chủng Sáng Thế", ItemSlot.AMULET, Rarity.DIVINE, 9900, 260, 70, 70, 70, 90, "Tia lửa ban đầu thắp sáng muôn loài, gia tăng cực hạn mọi chỉ số.", "💥"),
 
-                // VŨ KHÍ
+                // 6. VŨ KHÍ (WEAPON) - 8 Phẩm Cấp
                 new Item("weapon_stick", "Côn Gỗ Luyện Tập", ItemSlot.WEAPON, Rarity.COMMON, 50, 0, 4, 0, 2, 0, "Khúc gỗ sồi chắc nịch dùng để rèn luyện cổ tay.", "🪵"),
+                new Item("weapon_dagger", "Dao Găm Sát Thủ", ItemSlot.WEAPON, Rarity.UNCOMMON, 100, 0, 7, 0, 5, 2, "Lưỡi dao thép đen nhẹ bén, thích hợp luyện tập tốc độ cao.", "🗡️"),
                 new Item("weapon_sword", "Thanh Kiếm Thép Đúc", ItemSlot.WEAPON, Rarity.RARE, 180, 0, 10, 0, 6, 0, "Lưỡi kiếm sắc bén rèn từ lò luyện kim hoàng gia.", "⚔️"),
                 new Item("weapon_axe", "Rìu Chiến Berserker", ItemSlot.WEAPON, Rarity.EPIC, 460, 6, 22, 8, 0, 0, "Chiếc rìu khổng lồ của chiến binh cuồng nộ.", "🪓"),
-                new Item("weapon_excalibur", "Thánh Kiếm Excalibur", ItemSlot.WEAPON, Rarity.LEGENDARY, 1400, 30, 35, 0, 18, 15, "Bảo kiếm huyền thoại cắm sâu trong đá.", "🗡️"),
-
-                // TRANG BỊ ĐẶC BIỆT TỪ BOSS THẾ GIỚI BANG HỘI
-                new Item("weapon_dragon_slayer", "Đại Đao Trảm Long", ItemSlot.WEAPON, Rarity.LEGENDARY, 3500, 80, 55, 10, 25, 20, "Thần binh rèn từ vảy và răng Hắc Long, uy lực hủy thiên diệt địa.", "🗡️"),
-                new Item("armor_dragon_scale", "Long Lân Thần Giáp", ItemSlot.ARMOR, Rarity.LEGENDARY, 3200, 75, 25, 45, 15, 20, "Lớp vảy rồng kiên cố bất khả xâm phạm bảo vệ toàn thân.", "🐲"),
-                new Item("amulet_boss_heart", "Trái Tim Hắc Long", ItemSlot.AMULET, Rarity.LEGENDARY, 4000, 100, 25, 25, 25, 35, "Tinh hoa sinh mệnh của Siêu Trùm Thế Giới ban phước lành.", "💎")
+                new Item("weapon_excalibur", "Thánh Kiếm Excalibur", ItemSlot.WEAPON, Rarity.LEGENDARY, 1400, 30, 35, 0, 18, 15, "Bảo kiếm huyền thoại cắm sâu trong đá, chỉ người xứng đáng mới rút được.", "🗡️"),
+                new Item("weapon_dragon_slayer", "Đại Đao Trảm Long", ItemSlot.WEAPON, Rarity.MYTHIC, 3500, 80, 65, 15, 35, 25, "Thần binh rèn từ vảy và răng Hắc Long, uy lực hủy thiên diệt địa.", "🗡️"),
+                new Item("weapon_gungnir", "Thần Thương Gungnir", ItemSlot.WEAPON, Rarity.ANCIENT, 6000, 150, 85, 25, 60, 40, "Ngọn thương thần thoại bách phát bách trúng, uy lực xuyên thủng mọi hàng phòng thủ.", "🔱"),
+                new Item("weapon_god_slayer", "Đồ Thần Cực Kiếm", ItemSlot.WEAPON, Rarity.DIVINE, 10000, 300, 130, 40, 80, 70, "Thần binh chí tôn trảm phá thần ma, đòn đánh xé rách thực tại.", "⚔️")
         );
 
         for (Item item : itemsList) {
@@ -491,85 +531,15 @@ public class VigilSqlDb extends SQLiteOpenHelper {
     }
 
     private void seedSampleGuilds(SQLiteDatabase db) {
-        String[] guildNames = {"Hiệp Sĩ Bàn Tròn", "Chiến Binh Rồng", "Lôi Thần Điện"};
-        String[] badges = {"🛡️", "🐉", "⚡"};
-        String[] slogans = {
-                "Danh dự, kỷ luật và sức mạnh vượt qua mọi giới hạn!",
-                "Ngọn lửa kiên trì thiêu đốt mọi mệt mỏi và lười biếng!",
-                "Nhanh như chớp, uy lực như sấm sét trong từng bài tập!"
-        };
-        int[] leaders = {2, 5, 3};
-
-        for (int i = 0; i < guildNames.length; i++) {
-            ContentValues gCv = new ContentValues();
-            gCv.put("id", i + 1);
-            gCv.put("name", guildNames[i]);
-            gCv.put("badge", badges[i]);
-            gCv.put("slogan", slogans[i]);
-            gCv.put("leader_id", leaders[i]);
-            gCv.put("level", 3 - i);
-            gCv.put("created_at", LocalDate.now().toString());
-            db.insertWithOnConflict("guilds", null, gCv, SQLiteDatabase.CONFLICT_IGNORE);
-
-            ContentValues mCv = new ContentValues();
-            mCv.put("guild_id", i + 1);
-            mCv.put("user_id", leaders[i]);
-            mCv.put("role", "LEADER");
-            mCv.put("joined_at", LocalDate.now().toString());
-            db.insertWithOnConflict("guild_members", null, mCv, SQLiteDatabase.CONFLICT_IGNORE);
-        }
+        // Chỉ lưu giữ bang hội do người dùng tạo
     }
 
     private void seedSampleGuildBosses(SQLiteDatabase db) {
-        String[][] bosses = {
-                {"1", "1", "boss_nether_dragon", "Hắc Long Viễn Cổ - Nidhogg", "SIÊU TRÙM THẾ GIỚI BANG HỘI", "🐉", "500000", "385000", "ACTIVE", "15000", "350", "weapon_dragon_slayer"},
-                {"2", "2", "boss_inferno_titan", "Cự Nhân Hỏa Ngục - Surtr", "SIÊU TRÙM THẾ GIỚI BANG HỘI", "🌋", "650000", "490000", "ACTIVE", "18000", "400", "armor_dragon_scale"},
-                {"3", "3", "boss_void_behemoth", "Thần Thú Hư Không - Leviathan", "SIÊU TRÙM THẾ GIỚI BANG HỘI", "🐲", "800000", "800000", "ACTIVE", "22000", "500", "amulet_boss_heart"}
-        };
-        for (String[] b : bosses) {
-            ContentValues cv = new ContentValues();
-            cv.put("id", Integer.parseInt(b[0]));
-            cv.put("guild_id", Integer.parseInt(b[1]));
-            cv.put("boss_id", b[2]);
-            cv.put("boss_name", b[3]);
-            cv.put("boss_title", b[4]);
-            cv.put("boss_avatar", b[5]);
-            cv.put("max_hp", Integer.parseInt(b[6]));
-            cv.put("current_hp", Integer.parseInt(b[7]));
-            cv.put("status", b[8]);
-            cv.put("reward_gold", Integer.parseInt(b[9]));
-            cv.put("reward_gems", Integer.parseInt(b[10]));
-            cv.put("reward_item_id", b[11]);
-            cv.put("created_at", LocalDate.now().toString());
-            db.insertWithOnConflict("guild_boss", null, cv, SQLiteDatabase.CONFLICT_IGNORE);
-        }
-
-        ContentValues dmgCv = new ContentValues();
-        dmgCv.put("guild_id", 1);
-        dmgCv.put("boss_db_id", 1);
-        dmgCv.put("user_id", 2);
-        dmgCv.put("damage", 115000);
-        dmgCv.put("reps_contributed", 120);
-        dmgCv.put("has_claimed_defeat_reward", 0);
-        db.insertWithOnConflict("guild_boss_damage", null, dmgCv, SQLiteDatabase.CONFLICT_IGNORE);
+        // Chỉ lưu giữ boss của bang hội người dùng
     }
 
-
     private void seedSampleRequests(SQLiteDatabase db) {
-        ContentValues frCv = new ContentValues();
-        frCv.put("sender_id", 3);
-        frCv.put("receiver_id", 1);
-        frCv.put("status", "PENDING");
-        frCv.put("created_at", LocalDate.now().toString());
-        db.insertWithOnConflict("friend_requests", null, frCv, SQLiteDatabase.CONFLICT_IGNORE);
-
-        ContentValues giCv = new ContentValues();
-        giCv.put("guild_id", 2);
-        giCv.put("inviter_id", 5);
-        giCv.put("invitee_id", 1);
-        giCv.put("status", "PENDING");
-        giCv.put("created_at", LocalDate.now().toString());
-        db.insertWithOnConflict("guild_invitations", null, giCv, SQLiteDatabase.CONFLICT_IGNORE);
+        // Chỉ lưu giữ yêu cầu thực tế
     }
 
     private static class SampleWorkout {
@@ -785,22 +755,34 @@ public class VigilSqlDb extends SQLiteOpenHelper {
                     double rarityRoll = rng.nextDouble();
                     Rarity targetRarity;
                     if (isBoss) {
-                        if (rarityRoll < Math.min(0.08, 0.02 + (totalLuck * 0.001))) {
+                        double luckFactor = totalLuck * 0.001;
+                        if (rarityRoll < 0.01 + luckFactor * 0.1) {
+                            targetRarity = Rarity.DIVINE;
+                        } else if (rarityRoll < 0.04 + luckFactor * 0.2) {
+                            targetRarity = Rarity.ANCIENT;
+                        } else if (rarityRoll < 0.10 + luckFactor * 0.3) {
+                            targetRarity = Rarity.MYTHIC;
+                        } else if (rarityRoll < 0.22 + luckFactor * 0.4) {
                             targetRarity = Rarity.LEGENDARY;
-                        } else if (rarityRoll < Math.min(0.25, 0.12 + (totalLuck * 0.002))) {
+                        } else if (rarityRoll < 0.45) {
                             targetRarity = Rarity.EPIC;
-                        } else if (rarityRoll < 0.60) {
+                        } else if (rarityRoll < 0.75) {
                             targetRarity = Rarity.RARE;
                         } else {
-                            targetRarity = Rarity.COMMON;
+                            targetRarity = Rarity.UNCOMMON;
                         }
                     } else {
-                        if (rarityRoll < Math.min(0.02, 0.005 + (totalLuck * 0.0005))) {
+                        double luckFactor = totalLuck * 0.0005;
+                        if (rarityRoll < 0.002 + luckFactor * 0.05) {
+                            targetRarity = Rarity.MYTHIC;
+                        } else if (rarityRoll < 0.015 + luckFactor * 0.1) {
                             targetRarity = Rarity.LEGENDARY;
-                        } else if (rarityRoll < Math.min(0.10, 0.04 + (totalLuck * 0.001))) {
+                        } else if (rarityRoll < 0.08 + luckFactor * 0.2) {
                             targetRarity = Rarity.EPIC;
-                        } else if (rarityRoll < 0.35) {
+                        } else if (rarityRoll < 0.25) {
                             targetRarity = Rarity.RARE;
+                        } else if (rarityRoll < 0.60) {
+                            targetRarity = Rarity.UNCOMMON;
                         } else {
                             targetRarity = Rarity.COMMON;
                         }
@@ -1581,10 +1563,16 @@ public class VigilSqlDb extends SQLiteOpenHelper {
             int reps = cReps.moveToFirst() ? cReps.getInt(0) : 0;
             cReps.close();
 
+            Cursor cApp = db.rawQuery("SELECT id FROM guild_join_requests WHERE guild_id = ? AND user_id = ? AND status = 'PENDING'",
+                    new String[]{String.valueOf(gId), String.valueOf(userId)});
+            boolean hasPending = cApp.moveToFirst();
+            cApp.close();
+
             list.add(new Guild(
                     gId, gName, badge, slogan, leaderId, leaderName, level, count, reps,
                     userGuild != null && userGuild.getId() == gId,
-                    userGuild != null && userGuild.getId() == gId && userGuild.isUserLeader()
+                    userGuild != null && userGuild.getId() == gId && userGuild.isUserLeader(),
+                    hasPending
             ));
         }
         cursor.close();
@@ -1782,6 +1770,193 @@ public class VigilSqlDb extends SQLiteOpenHelper {
     public boolean cancelGuildInvitation(int invitationId, int inviterId) {
         SQLiteDatabase db = getWritableDatabase();
         return db.delete("guild_invitations", "id = ?", new String[]{String.valueOf(invitationId)}) > 0;
+    }
+
+    // =========================================================================
+    // ĐƠN XIN GIA NHẬP BANG HỘI (GUILD JOIN APPLICATIONS)
+    // =========================================================================
+
+    public Pair<Boolean, String> applyToGuild(int userId, int guildId) {
+        SQLiteDatabase db = getWritableDatabase();
+        Guild existing = getUserGuild(userId);
+        if (existing != null) {
+            return new Pair<>(false, "Bạn đã ở trong bang '" + existing.getName() + "' rồi!");
+        }
+
+        Cursor gCursor = db.rawQuery("SELECT name FROM guilds WHERE id = ?", new String[]{String.valueOf(guildId)});
+        if (!gCursor.moveToFirst()) {
+            gCursor.close();
+            return new Pair<>(false, "Bang hội không tồn tại!");
+        }
+        String guildName = gCursor.getString(0);
+        gCursor.close();
+
+        Cursor reqCursor = db.rawQuery("SELECT id FROM guild_join_requests WHERE guild_id = ? AND user_id = ? AND status = 'PENDING'",
+                new String[]{String.valueOf(guildId), String.valueOf(userId)});
+        boolean alreadyPending = reqCursor.moveToFirst();
+        reqCursor.close();
+        if (alreadyPending) {
+            return new Pair<>(false, "Bạn đã gửi đơn xin vào bang này rồi, vui lòng chờ Chủ bang phê duyệt!");
+        }
+
+        ContentValues cv = new ContentValues();
+        cv.put("guild_id", guildId);
+        cv.put("user_id", userId);
+        cv.put("status", "PENDING");
+        cv.put("created_at", LocalDate.now().toString());
+        long res = db.insertWithOnConflict("guild_join_requests", null, cv, SQLiteDatabase.CONFLICT_REPLACE);
+        if (res != -1L) {
+            return new Pair<>(true, "Đã gửi đơn xin gia nhập bang " + guildName + "! Vui lòng chờ Chủ bang phê duyệt.");
+        } else {
+            return new Pair<>(false, "Gửi đơn xin gia nhập thất bại!");
+        }
+    }
+
+    public Pair<Boolean, String> cancelGuildApplication(int userId, int guildId) {
+        SQLiteDatabase db = getWritableDatabase();
+        int rows = db.delete("guild_join_requests", "guild_id = ? AND user_id = ? AND status = 'PENDING'",
+                new String[]{String.valueOf(guildId), String.valueOf(userId)});
+        if (rows > 0) {
+            return new Pair<>(true, "Đã hủy đơn xin gia nhập bang hội.");
+        } else {
+            return new Pair<>(false, "Không tìm thấy đơn xin gia nhập cần hủy.");
+        }
+    }
+
+    public Pair<Boolean, String> cancelGuildApplicationById(int userId, int applicationId) {
+        SQLiteDatabase db = getWritableDatabase();
+        int rows = db.delete("guild_join_requests", "id = ? AND user_id = ?",
+                new String[]{String.valueOf(applicationId), String.valueOf(userId)});
+        if (rows > 0) {
+            return new Pair<>(true, "Đã hủy đơn xin gia nhập bang hội.");
+        } else {
+            return new Pair<>(false, "Không tìm thấy đơn xin gia nhập cần hủy.");
+        }
+    }
+
+    public List<GuildJoinApplication> getPendingGuildApplications(int guildId) {
+        List<GuildJoinApplication> list = new ArrayList<>();
+        SQLiteDatabase db = getReadableDatabase();
+        String query = "SELECT r.id, r.guild_id, g.name AS guild_name, r.user_id, u.username, u.avatar, u.level, u.total_reps, r.status, r.created_at " +
+                "FROM guild_join_requests r " +
+                "JOIN users u ON r.user_id = u.id " +
+                "JOIN guilds g ON r.guild_id = g.id " +
+                "WHERE r.guild_id = ? AND r.status = 'PENDING' " +
+                "ORDER BY r.id DESC";
+        Cursor cursor = db.rawQuery(query, new String[]{String.valueOf(guildId)});
+        while (cursor.moveToNext()) {
+            list.add(new GuildJoinApplication(
+                    cursor.getInt(0),
+                    cursor.getInt(1),
+                    cursor.getString(2),
+                    cursor.getInt(3),
+                    cursor.getString(4),
+                    cursor.getString(5),
+                    cursor.getInt(6),
+                    cursor.getInt(7),
+                    cursor.getString(8),
+                    cursor.getString(9)
+            ));
+        }
+        cursor.close();
+        return list;
+    }
+
+    public List<GuildJoinApplication> getMyPendingGuildApplications(int userId) {
+        List<GuildJoinApplication> list = new ArrayList<>();
+        SQLiteDatabase db = getReadableDatabase();
+        String query = "SELECT r.id, r.guild_id, g.name AS guild_name, r.user_id, u.username, u.avatar, u.level, u.total_reps, r.status, r.created_at " +
+                "FROM guild_join_requests r " +
+                "JOIN users u ON r.user_id = u.id " +
+                "JOIN guilds g ON r.guild_id = g.id " +
+                "WHERE r.user_id = ? AND r.status = 'PENDING' " +
+                "ORDER BY r.id DESC";
+        Cursor cursor = db.rawQuery(query, new String[]{String.valueOf(userId)});
+        while (cursor.moveToNext()) {
+            list.add(new GuildJoinApplication(
+                    cursor.getInt(0),
+                    cursor.getInt(1),
+                    cursor.getString(2),
+                    cursor.getInt(3),
+                    cursor.getString(4),
+                    cursor.getString(5),
+                    cursor.getInt(6),
+                    cursor.getInt(7),
+                    cursor.getString(8),
+                    cursor.getString(9)
+            ));
+        }
+        cursor.close();
+        return list;
+    }
+
+    public Pair<Boolean, String> approveGuildApplication(int leaderId, int applicationId) {
+        SQLiteDatabase db = getWritableDatabase();
+        String query = "SELECT r.guild_id, r.user_id, u.username, g.leader_id, g.name " +
+                "FROM guild_join_requests r " +
+                "JOIN guilds g ON r.guild_id = g.id " +
+                "JOIN users u ON r.user_id = u.id " +
+                "WHERE r.id = ?";
+        Cursor cursor = db.rawQuery(query, new String[]{String.valueOf(applicationId)});
+        if (!cursor.moveToFirst()) {
+            cursor.close();
+            return new Pair<>(false, "Không tìm thấy đơn xin gia nhập!");
+        }
+        int guildId = cursor.getInt(0);
+        int applicantId = cursor.getInt(1);
+        String applicantName = cursor.getString(2);
+        int actualLeaderId = cursor.getInt(3);
+        String guildName = cursor.getString(4);
+        cursor.close();
+
+        if (actualLeaderId != leaderId) {
+            return new Pair<>(false, "Chỉ Chủ bang mới có quyền phê duyệt thành viên!");
+        }
+
+        Cursor countCursor = db.rawQuery("SELECT COUNT(*) FROM guild_members WHERE guild_id = ?", new String[]{String.valueOf(guildId)});
+        int count = countCursor.moveToFirst() ? countCursor.getInt(0) : 1;
+        countCursor.close();
+        if (count >= 30) {
+            return new Pair<>(false, "Bang hội đã đạt giới hạn tối đa 30 thành viên!");
+        }
+
+        // Thêm người chơi vào thành viên bang
+        ContentValues mCv = new ContentValues();
+        mCv.put("guild_id", guildId);
+        mCv.put("user_id", applicantId);
+        mCv.put("role", "MEMBER");
+        mCv.put("joined_at", LocalDate.now().toString());
+        db.insertWithOnConflict("guild_members", null, mCv, SQLiteDatabase.CONFLICT_REPLACE);
+
+        // Cập nhật trạng thái đơn
+        ContentValues rCv = new ContentValues();
+        rCv.put("status", "ACCEPTED");
+        db.update("guild_join_requests", rCv, "id = ?", new String[]{String.valueOf(applicationId)});
+
+        // Dọn dẹp các đơn xin khác và lời mời liên quan
+        db.delete("guild_join_requests", "user_id = ? AND id != ?", new String[]{String.valueOf(applicantId), String.valueOf(applicationId)});
+        db.delete("guild_invitations", "invitee_id = ?", new String[]{String.valueOf(applicantId)});
+
+        return new Pair<>(true, "👑 Đã phê duyệt " + applicantName + " gia nhập bang hội " + guildName + "!");
+    }
+
+    public Pair<Boolean, String> rejectGuildApplication(int leaderId, int applicationId) {
+        SQLiteDatabase db = getWritableDatabase();
+        String query = "SELECT g.leader_id FROM guild_join_requests r JOIN guilds g ON r.guild_id = g.id WHERE r.id = ?";
+        Cursor cursor = db.rawQuery(query, new String[]{String.valueOf(applicationId)});
+        if (!cursor.moveToFirst()) {
+            cursor.close();
+            return new Pair<>(false, "Không tìm thấy đơn xin gia nhập!");
+        }
+        int actualLeaderId = cursor.getInt(0);
+        cursor.close();
+
+        if (actualLeaderId != leaderId) {
+            return new Pair<>(false, "Chỉ Chủ bang mới có quyền từ chối đơn xin!");
+        }
+
+        db.delete("guild_join_requests", "id = ?", new String[]{String.valueOf(applicationId)});
+        return new Pair<>(true, "Đã từ chối đơn xin gia nhập bang hội.");
     }
 
     // =========================================================================

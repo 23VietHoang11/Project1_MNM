@@ -2,8 +2,8 @@ package com.example.vigil.network;
 
 import com.example.vigil.model.GuildBoss;
 import com.example.vigil.model.GuildBossContribution;
-
 import com.example.vigil.model.GuildBossInfo;
+import com.example.vigil.model.GuildJoinApplication;
 import com.example.vigil.model.Item;
 import com.example.vigil.model.ItemSlot;
 import com.example.vigil.model.Rarity;
@@ -443,6 +443,134 @@ public class ApiClient {
                     return new Pair<>(true, msg);
                 } else {
                     String err = obj != null && obj.has("error") ? obj.get("error").getAsString() : "Lỗi triệu hồi!";
+                    return new Pair<>(false, err);
+                }
+            }
+        } catch (Exception e) {
+            return new Pair<>(false, "Lỗi kết nối: " + e.getMessage());
+        }
+    }
+
+    public static Pair<Boolean, String> applyToGuild(String username, int guildId) {
+        try {
+            JsonObject body = new JsonObject();
+            body.addProperty("username", username);
+            body.addProperty("guildId", guildId);
+            RequestBody reqBody = RequestBody.create(jsonMediaType, body.toString());
+
+            Request req = new Request.Builder().url(baseUrl + "/api/guilds/apply").post(reqBody).build();
+            try (Response res = client.newCall(req).execute()) {
+                String json = res.body() != null ? res.body().string() : "";
+                JsonObject obj = gson.fromJson(json, JsonObject.class);
+                if (res.isSuccessful() && obj != null && obj.get("success").getAsBoolean()) {
+                    String msg = obj.has("message") ? obj.get("message").getAsString() : "Đã gửi đơn xin gia nhập bang!";
+                    return new Pair<>(true, msg);
+                } else {
+                    String err = obj != null && obj.has("error") ? obj.get("error").getAsString() : "Lỗi gửi đơn!";
+                    return new Pair<>(false, err);
+                }
+            }
+        } catch (Exception e) {
+            return new Pair<>(false, "Lỗi kết nối: " + e.getMessage());
+        }
+    }
+
+    public static Pair<Boolean, String> cancelGuildApplication(String username, Integer guildId, Integer applicationId) {
+        try {
+            JsonObject body = new JsonObject();
+            body.addProperty("username", username);
+            if (guildId != null) body.addProperty("guildId", guildId);
+            if (applicationId != null) body.addProperty("applicationId", applicationId);
+            RequestBody reqBody = RequestBody.create(jsonMediaType, body.toString());
+
+            Request req = new Request.Builder().url(baseUrl + "/api/guilds/cancel-application").post(reqBody).build();
+            try (Response res = client.newCall(req).execute()) {
+                String json = res.body() != null ? res.body().string() : "";
+                JsonObject obj = gson.fromJson(json, JsonObject.class);
+                if (res.isSuccessful() && obj != null && obj.get("success").getAsBoolean()) {
+                    String msg = obj.has("message") ? obj.get("message").getAsString() : "Đã hủy đơn xin gia nhập.";
+                    return new Pair<>(true, msg);
+                } else {
+                    String err = obj != null && obj.has("error") ? obj.get("error").getAsString() : "Lỗi hủy đơn!";
+                    return new Pair<>(false, err);
+                }
+            }
+        } catch (Exception e) {
+            return new Pair<>(false, "Lỗi kết nối: " + e.getMessage());
+        }
+    }
+
+    public static List<GuildJoinApplication> getPendingGuildApplications(int guildId) {
+        List<GuildJoinApplication> list = new ArrayList<>();
+        try {
+            Request req = new Request.Builder().url(baseUrl + "/api/guilds/applications/" + guildId).get().build();
+            try (Response res = client.newCall(req).execute()) {
+                if (!res.isSuccessful()) return list;
+                String json = res.body() != null ? res.body().string() : "";
+                JsonObject obj = gson.fromJson(json, JsonObject.class);
+                if (obj != null && obj.has("applications")) {
+                    JsonArray arr = obj.getAsJsonArray("applications");
+                    for (JsonElement el : arr) {
+                        JsonObject o = el.getAsJsonObject();
+                        list.add(new GuildJoinApplication(
+                                o.get("id").getAsInt(),
+                                o.get("guild_id").getAsInt(),
+                                o.has("guild_name") ? o.get("guild_name").getAsString() : "",
+                                o.get("user_id").getAsInt(),
+                                o.has("username") ? o.get("username").getAsString() : "Chiến Binh",
+                                o.has("avatar") ? o.get("avatar").getAsString() : "🧑‍🎤",
+                                o.has("level") ? o.get("level").getAsInt() : 1,
+                                o.has("total_reps") ? o.get("total_reps").getAsInt() : 0,
+                                o.has("status") ? o.get("status").getAsString() : "PENDING",
+                                o.has("created_at") ? o.get("created_at").getAsString() : ""
+                        ));
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+        return list;
+    }
+
+    public static Pair<Boolean, String> approveGuildApplication(String leaderUsername, int applicationId) {
+        try {
+            JsonObject body = new JsonObject();
+            body.addProperty("leaderUsername", leaderUsername);
+            body.addProperty("applicationId", applicationId);
+            RequestBody reqBody = RequestBody.create(jsonMediaType, body.toString());
+
+            Request req = new Request.Builder().url(baseUrl + "/api/guilds/approve-application").post(reqBody).build();
+            try (Response res = client.newCall(req).execute()) {
+                String json = res.body() != null ? res.body().string() : "";
+                JsonObject obj = gson.fromJson(json, JsonObject.class);
+                if (res.isSuccessful() && obj != null && obj.get("success").getAsBoolean()) {
+                    String msg = obj.has("message") ? obj.get("message").getAsString() : "Đã duyệt đơn gia nhập!";
+                    return new Pair<>(true, msg);
+                } else {
+                    String err = obj != null && obj.has("error") ? obj.get("error").getAsString() : "Lỗi duyệt đơn!";
+                    return new Pair<>(false, err);
+                }
+            }
+        } catch (Exception e) {
+            return new Pair<>(false, "Lỗi kết nối: " + e.getMessage());
+        }
+    }
+
+    public static Pair<Boolean, String> rejectGuildApplication(String leaderUsername, int applicationId) {
+        try {
+            JsonObject body = new JsonObject();
+            body.addProperty("leaderUsername", leaderUsername);
+            body.addProperty("applicationId", applicationId);
+            RequestBody reqBody = RequestBody.create(jsonMediaType, body.toString());
+
+            Request req = new Request.Builder().url(baseUrl + "/api/guilds/reject-application").post(reqBody).build();
+            try (Response res = client.newCall(req).execute()) {
+                String json = res.body() != null ? res.body().string() : "";
+                JsonObject obj = gson.fromJson(json, JsonObject.class);
+                if (res.isSuccessful() && obj != null && obj.get("success").getAsBoolean()) {
+                    String msg = obj.has("message") ? obj.get("message").getAsString() : "Đã từ chối đơn gia nhập.";
+                    return new Pair<>(true, msg);
+                } else {
+                    String err = obj != null && obj.has("error") ? obj.get("error").getAsString() : "Lỗi từ chối đơn!";
                     return new Pair<>(false, err);
                 }
             }

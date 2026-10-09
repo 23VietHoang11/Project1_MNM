@@ -24,41 +24,27 @@ const dbConfig = {
 let pool = null;
 let useFallback = false;
 
-// Dữ liệu bộ nhớ tạm phòng khi người dùng chưa bật MySQL (Tránh crash server)
 let memoryDB = {
     users: [
-        { id: 1, username: 'Hachimi', password: '123456', avatar: '🦊', gold: 0, gems: 0, xp: 80, level: 2, streak: 3, total_reps: 45, stage: 2 },
-        { id: 2, username: 'ShadowBlade', password: '123456', avatar: '🥷', gold: 500, gems: 25, xp: 450, level: 5, streak: 7, total_reps: 210, stage: 4 },
-        { id: 3, username: 'ValkyrieGym', password: '123456', avatar: '👑', gold: 900, gems: 40, xp: 950, level: 8, streak: 14, total_reps: 480, stage: 7 },
-        { id: 4, username: 'IronTitan', password: '123456', avatar: '🗿', gold: 1400, gems: 60, xp: 1600, level: 12, streak: 21, total_reps: 850, stage: 10 },
-        { id: 5, username: 'DragonFit', password: '123456', avatar: '🐉', gold: 300, gems: 15, xp: 250, level: 3, streak: 5, total_reps: 120, stage: 3 },
-        { id: 6, username: 'Phoenix', password: '123456', avatar: '🔥', gold: 750, gems: 30, xp: 720, level: 6, streak: 9, total_reps: 340, stage: 5 }
+        { id: 1, username: 'Hachimi', password: '123456', avatar: '🦊', gold: 0, gems: 0, xp: 80, level: 2, streak: 3, total_reps: 45, stage: 2 }
     ],
     items: [],
     inventory: [{ id: 1, user_id: 1, item_id: 'helm_bronze', is_equipped: 1 }],
-    friends: [
-        { id: 1, user_id: 1, friend_id: 2 },
-        { id: 2, user_id: 2, friend_id: 1 }
-    ],
+    friends: [],
+    friend_requests: [],
     workouts: [],
     guilds: [
-        { id: 1, name: 'Taiwan Fitness 🇹🇼', badge: '🇹🇼', slogan: 'Pushing for improvement every single rep!', leader_id: 2, level: 2 },
-        { id: 2, name: 'Chiến Binh Rồng 🐉', badge: '🐉', slogan: 'Ý chí rèn luyện tựa long thần!', leader_id: 5, level: 3 },
-        { id: 3, name: 'Titan Thép 🗿', badge: '🗿', slogan: 'Cơ bắp vững chắc như bàn thạch.', leader_id: 4, level: 4 }
+        { id: 1, name: 'Vigil Chiến Binh 🛡️', badge: '🛡️', slogan: 'Tập luyện bứt phá giới hạn mỗi ngày!', leader_id: 1, level: 1 }
     ],
     guild_members: [
-        { id: 1, guild_id: 1, user_id: 2, role: 'LEADER' },
-        { id: 2, guild_id: 2, user_id: 5, role: 'LEADER' },
-        { id: 3, guild_id: 3, user_id: 4, role: 'LEADER' }
+        { id: 1, guild_id: 1, user_id: 1, role: 'LEADER' }
     ],
+    guild_invitations: [],
+    guild_join_requests: [],
     guild_bosses: [
-        { id: 1, guild_id: 1, boss_id: 'boss_nether_dragon', boss_name: 'Hắc Long Viễn Cổ - Nidhogg', boss_title: 'SIÊU TRÙM THẾ GIỚI BANG HỘI', boss_avatar: '🐉', max_hp: 500000, current_hp: 385000, status: 'ACTIVE', reward_gold: 15000, reward_gems: 350, reward_item_id: 'weapon_dragon_slayer' },
-        { id: 2, guild_id: 2, boss_id: 'boss_inferno_titan', boss_name: 'Cự Nhân Hỏa Ngục - Surtr', boss_title: 'SIÊU TRÙM THẾ GIỚI BANG HỘI', boss_avatar: '🌋', max_hp: 600000, current_hp: 490000, status: 'ACTIVE', reward_gold: 18000, reward_gems: 400, reward_item_id: 'armor_dragon_scale' },
-        { id: 3, guild_id: 3, boss_id: 'boss_void_behemoth', boss_name: 'Thần Thú Hư Không - Leviathan', boss_title: 'SIÊU TRÙM THẾ GIỚI BANG HỘI', boss_avatar: '🐲', max_hp: 750000, current_hp: 750000, status: 'ACTIVE', reward_gold: 22000, reward_gems: 500, reward_item_id: 'amulet_boss_heart' }
+        { id: 1, guild_id: 1, boss_id: 'boss_nether_dragon', boss_name: 'Hắc Long Viễn Cổ - Nidhogg', boss_title: 'SIÊU TRÙM THẾ GIỚI BANG HỘI', boss_avatar: '🐉', max_hp: 500000, current_hp: 500000, status: 'ACTIVE', reward_gold: 15000, reward_gems: 350, reward_item_id: 'weapon_dragon_slayer' }
     ],
-    guild_boss_damage: [
-        { id: 1, guild_id: 1, boss_db_id: 1, user_id: 2, damage: 115000, reps_contributed: 120, has_claimed_defeat_reward: false }
-    ]
+    guild_boss_damage: []
 };
 
 // Khởi tạo Database
@@ -100,33 +86,65 @@ async function initDatabase() {
 
 function loadSampleMemoryItems() {
     memoryDB.items = [
+        // 1. MŨ GIÁP (HELMET)
         { id: 'helm_bronze', name: 'Mũ Đồng Tân Binh', slot: 'HELMET', rarity: 'COMMON', price_gold: 50, price_gems: 0, bonus_str: 0, bonus_end: 3, bonus_pre: 0, bonus_luck: 1, description: 'Mũ đồng đúc thô sơ giúp che chắn đầu khi tập nặng.', icon: '🪖' },
+        { id: 'helm_scout', name: 'Nón Trinh Sát Rừng Rậm', slot: 'HELMET', rarity: 'UNCOMMON', price_gold: 90, price_gems: 0, bonus_str: 0, bonus_end: 5, bonus_pre: 2, bonus_luck: 1, description: 'Nón vải ngụy trang nhẹ nhàng cho các buổi cardio dã ngoại.', icon: '🧢' },
         { id: 'helm_iron', name: 'Thiết Giáp Đầu', slot: 'HELMET', rarity: 'RARE', price_gold: 160, price_gems: 0, bonus_str: 3, bonus_end: 7, bonus_pre: 0, bonus_luck: 2, description: 'Rèn từ sắt non tôi luyện trong nhiệt độ cao.', icon: '⛑️' },
         { id: 'helm_valkyrie', name: 'Mũ Lông Vũ Valkyrie', slot: 'HELMET', rarity: 'EPIC', price_gold: 420, price_gems: 5, bonus_str: 5, bonus_end: 14, bonus_pre: 0, bonus_luck: 8, description: 'Ban phước bởi các nữ thần chiến trận phương Bắc.', icon: '👑' },
-        { id: 'helm_dragon', name: 'Vương Miện Long Thần', slot: 'HELMET', rarity: 'LEGENDARY', price_gold: 1000, price_gems: 20, bonus_str: 18, bonus_end: 25, bonus_pre: 0, bonus_luck: 12, description: 'Tỏa ra uy áp của loài rồng cổ đại, tăng cực đại thể lực.', icon: '🐉' },
+        { id: 'helm_dragon', name: 'Vương Miện Long Thần', slot: 'HELMET', rarity: 'LEGENDARY', price_gold: 1000, price_gems: 20, bonus_str: 20, bonus_end: 18, bonus_pre: 25, bonus_luck: 12, description: 'Tỏa ra uy áp của loài rồng cổ đại, tăng cực đại thể lực.', icon: '🐉' },
+        { id: 'helm_abyss', name: 'Vương Miện Vực Sâu', slot: 'HELMET', rarity: 'MYTHIC', price_gold: 2800, price_gems: 60, bonus_str: 35, bonus_end: 40, bonus_pre: 15, bonus_luck: 20, description: 'Ngưng tụ từ hắc ám vô tận dưới đáy vực, bảo hộ tuyệt đối tinh thần.', icon: '👑' },
+        { id: 'helm_odin', name: 'Mũ Thần Chiến Binh Odin', slot: 'HELMET', rarity: 'ANCIENT', price_gold: 5000, price_gems: 120, bonus_str: 50, bonus_end: 55, bonus_pre: 30, bonus_luck: 35, description: 'Bảo vật của Vua các vị thần, khai mở trí tuệ và thể lực siêu phàm.', icon: '🦅' },
+        { id: 'helm_divine_crown', name: 'Thần Quan Thiên Giới', slot: 'HELMET', rarity: 'DIVINE', price_gold: 8500, price_gems: 200, bonus_str: 75, bonus_end: 80, bonus_pre: 50, bonus_luck: 60, description: 'Vương miện của Đấng Tối Cao, hội tụ hào quang thái hư bảo bọc.', icon: '✨' },
+
+        // 2. GIÁP NGỰC (ARMOR)
         { id: 'armor_leather', name: 'Áo Da Dã Ngoại', slot: 'ARMOR', rarity: 'COMMON', price_gold: 60, price_gems: 0, bonus_str: 0, bonus_end: 4, bonus_pre: 2, bonus_luck: 0, description: 'Áo da bò mềm mại, thoáng mát cho các buổi hít đất dài.', icon: '🥋' },
+        { id: 'armor_chainmail', name: 'Áo Giáp Xích Bạc', slot: 'ARMOR', rarity: 'UNCOMMON', price_gold: 110, price_gems: 0, bonus_str: 2, bonus_end: 7, bonus_pre: 1, bonus_luck: 0, description: 'Kết từ hàng nghìn vòng xích thép dẻo dai phân tán lực va đập.', icon: '⛓️' },
         { id: 'armor_plate', name: 'Chiến Giáp Thép Nung', slot: 'ARMOR', rarity: 'RARE', price_gold: 180, price_gems: 0, bonus_str: 5, bonus_end: 10, bonus_pre: 0, bonus_luck: 0, description: 'Tấm giáp kiên cố bảo vệ cơ hoành và lưng dưới.', icon: '🛡️' },
         { id: 'armor_shadow', name: 'Áo Choàng Bóng Đêm', slot: 'ARMOR', rarity: 'EPIC', price_gold: 450, price_gems: 6, bonus_str: 10, bonus_end: 0, bonus_pre: 12, bonus_luck: 8, description: 'Hòa mình vào bóng tối, tăng sự tập trung và độ chuẩn xác.', icon: '🥷' },
         { id: 'armor_celestial', name: 'Thánh Giáp Quang Minh', slot: 'ARMOR', rarity: 'LEGENDARY', price_gold: 1200, price_gems: 25, bonus_str: 20, bonus_end: 28, bonus_pre: 15, bonus_luck: 0, description: 'Ánh hào quang chiếu rọi bảo bọc người chiến binh bền bỉ.', icon: '✨' },
+        { id: 'armor_dragon_scale', name: 'Long Lân Thần Giáp', slot: 'ARMOR', rarity: 'MYTHIC', price_gold: 3200, price_gems: 75, bonus_str: 25, bonus_end: 60, bonus_pre: 15, bonus_luck: 20, description: 'Lớp vảy rồng kiên cố bất khả xâm phạm bảo vệ toàn thân.', icon: '🐲' },
+        { id: 'armor_aegis', name: 'Thánh Giáp Bất Hoại Aegis', slot: 'ARMOR', rarity: 'ANCIENT', price_gold: 5500, price_gems: 130, bonus_str: 40, bonus_end: 80, bonus_pre: 25, bonus_luck: 35, description: 'Tấm khiên giáp huyền thoại của thần Zeus, chặn đứng mọi ngoại lực.', icon: '🛡️' },
+        { id: 'armor_primordial', name: 'Hỗn Nguyên Chiến Giáp', slot: 'ARMOR', rarity: 'DIVINE', price_gold: 9500, price_gems: 240, bonus_str: 65, bonus_end: 120, bonus_pre: 45, bonus_luck: 60, description: 'Rèn từ vật chất khởi thủy trước khi vũ trụ hình thành, bất hoại vĩnh cửu.', icon: '🌌' },
+
+        // 3. GĂNG TAY (GLOVES)
         { id: 'gloves_cloth', name: 'Băng Quấn Cổ Tay', slot: 'GLOVES', rarity: 'COMMON', price_gold: 40, price_gems: 0, bonus_str: 3, bonus_end: 0, bonus_pre: 2, bonus_luck: 0, description: 'Bảo vệ khớp cổ tay khi chống đẩy liên tục trên sàn cứng.', icon: '🥊' },
+        { id: 'gloves_leather_strap', name: 'Găng Đấu Khí Thiếu Niên', slot: 'GLOVES', rarity: 'UNCOMMON', price_gold: 80, price_gems: 0, bonus_str: 5, bonus_end: 0, bonus_pre: 4, bonus_luck: 1, description: 'Găng da dê bọc khớp tăng uy lực cú đấm và chống đẩy.', icon: '🥊' },
         { id: 'gloves_grip', name: 'Găng Hít Đất Siêu Bám', slot: 'GLOVES', rarity: 'RARE', price_gold: 150, price_gems: 0, bonus_str: 8, bonus_end: 0, bonus_pre: 6, bonus_luck: 0, description: 'Đế cao su hạt kim cương chống trượt tay hoàn đối.', icon: '🧤' },
         { id: 'gloves_titan', name: 'Găng Titan Siêu Lực', slot: 'GLOVES', rarity: 'EPIC', price_gold: 400, price_gems: 5, bonus_str: 18, bonus_end: 0, bonus_pre: 8, bonus_luck: 3, description: 'Khung titan trợ lực giúp bùng nổ lực đẩy cánh tay.', icon: '🦾' },
         { id: 'gloves_infinity', name: 'Găng Tay Vô Cực', slot: 'GLOVES', rarity: 'LEGENDARY', price_gold: 1100, price_gems: 22, bonus_str: 32, bonus_end: 0, bonus_pre: 16, bonus_luck: 14, description: 'Nắm giữ sức mạnh vũ trụ gom tụ trong từng thớ cơ.', icon: '🌌' },
+        { id: 'gloves_dragon_claw', name: 'Vuốt Rồng Bạt Hải', slot: 'GLOVES', rarity: 'MYTHIC', price_gold: 2600, price_gems: 55, bonus_str: 50, bonus_end: 10, bonus_pre: 30, bonus_luck: 25, description: 'Móng vuốt rồng thiêng xé toạc hư không, bùng nổ lực đẩy tay.', icon: '🐉' },
+        { id: 'gloves_thunder_strike', name: 'Quyền Thủ Lôi Thần Thor', slot: 'GLOVES', rarity: 'ANCIENT', price_gold: 4800, price_gems: 110, bonus_str: 75, bonus_end: 20, bonus_pre: 40, bonus_luck: 30, description: 'Găng sắt thần thánh giúp vung sấm sét ngàn cân dễ như trở bàn tay.', icon: '⚡' },
+        { id: 'gloves_creator', name: 'Thủ Ấn Khởi Nguyên', slot: 'GLOVES', rarity: 'DIVINE', price_gold: 8200, price_gems: 190, bonus_str: 110, bonus_end: 35, bonus_pre: 65, bonus_luck: 55, description: 'Bàn tay nhào nặn tinh cầu, chuyển hóa từng nhịp đẩy thành siêu sóng xung kích.', icon: '☄️' },
+
+        // 4. GIÀY (BOOTS)
         { id: 'boots_runner', name: 'Giày Chạy Phản Lực', slot: 'BOOTS', rarity: 'COMMON', price_gold: 45, price_gems: 0, bonus_str: 0, bonus_end: 3, bonus_pre: 0, bonus_luck: 2, description: 'Êm ái, giảm chấn gối khi squat hoặc bật nhảy.', icon: '👟' },
+        { id: 'boots_leather_hunter', name: 'Ủng Da Thợ Săn', slot: 'BOOTS', rarity: 'UNCOMMON', price_gold: 95, price_gems: 0, bonus_str: 1, bonus_end: 5, bonus_pre: 3, bonus_luck: 2, description: 'Bám chắc địa hình, giảm áp lực lên gót chân khi nhảy dây.', icon: '👢' },
         { id: 'boots_iron', name: 'Hộ Chân Chiến Binh', slot: 'BOOTS', rarity: 'RARE', price_gold: 150, price_gems: 0, bonus_str: 6, bonus_end: 7, bonus_pre: 0, bonus_luck: 0, description: 'Bọc thép mũi chân và ống quyển vững chãi như bàn thạch.', icon: '🥾' },
         { id: 'boots_winged', name: 'Hài Phong Thần Hermes', slot: 'BOOTS', rarity: 'EPIC', price_gold: 380, price_gems: 5, bonus_str: 0, bonus_end: 15, bonus_pre: 6, bonus_luck: 12, description: 'Đôi giày có cánh lướt đi nhẹ tựa lông hồng.', icon: '🪽' },
         { id: 'boots_abyss', name: 'Bộ Bước Vực Thẳm', slot: 'BOOTS', rarity: 'LEGENDARY', price_gold: 950, price_gems: 18, bonus_str: 18, bonus_end: 24, bonus_pre: 0, bonus_luck: 15, description: 'Mỗi bước chân để lại dư chấn khiến kẻ thù khiếp đảm.', icon: '⚡' },
+        { id: 'boots_shadow_stalker', name: 'Hư Không Bộ Pháp', slot: 'BOOTS', rarity: 'MYTHIC', price_gold: 2500, price_gems: 50, bonus_str: 20, bonus_end: 35, bonus_pre: 25, bonus_luck: 30, description: 'Lướt đi giữa các chiều không gian, đôi chân không hề biết mỏi.', icon: '⚡' },
+        { id: 'boots_chronos', name: 'Hài Thời Gian Chronos', slot: 'BOOTS', rarity: 'ANCIENT', price_gold: 4600, price_gems: 105, bonus_str: 30, bonus_end: 50, bonus_pre: 45, bonus_luck: 40, description: 'Bước chân thao túng thời gian, biến mỗi giây plank thành sức mạnh vô song.', icon: '⏳' },
+        { id: 'boots_celestial_stride', name: 'Tiêu Dao Thần Bộ', slot: 'BOOTS', rarity: 'DIVINE', price_gold: 8000, price_gems: 180, bonus_str: 45, bonus_end: 75, bonus_pre: 70, bonus_luck: 65, description: 'Đạp mây cưỡi gió vượt qua ranh giới cõi phàm trần.', icon: '🌟' },
+
+        // 5. BÙA CHÚ (AMULET)
         { id: 'amulet_stone', name: 'Bùa Đá May Mắn', slot: 'AMULET', rarity: 'COMMON', price_gold: 50, price_gems: 0, bonus_str: 0, bonus_end: 0, bonus_pre: 0, bonus_luck: 4, description: 'Hòn đá cuội ven suối đem lại vận may khi tập.', icon: '🪬' },
+        { id: 'amulet_wolf_tooth', name: 'Nanh Sói Hoang Dã', slot: 'AMULET', rarity: 'UNCOMMON', price_gold: 100, price_gems: 0, bonus_str: 2, bonus_end: 2, bonus_pre: 2, bonus_luck: 6, description: 'Nanh sói đầu đàn mang lại giác quan nhạy bén và may mắn.', icon: '🐺' },
         { id: 'amulet_ruby', name: 'Huyết Ngọc Hồi Phục', slot: 'AMULET', rarity: 'RARE', price_gold: 190, price_gems: 0, bonus_str: 6, bonus_end: 6, bonus_pre: 0, bonus_luck: 5, description: 'Viên hồng ngọc đẩy nhanh tốc độ phục hồi cơ bắp.', icon: '🔮' },
         { id: 'amulet_eye', name: 'Mắt Ưng Tinh Anh', slot: 'AMULET', rarity: 'EPIC', price_gold: 480, price_gems: 7, bonus_str: 10, bonus_end: 0, bonus_pre: 16, bonus_luck: 10, description: 'Giúp nhìn rõ từng biên độ góc khớp chuẩn từng mi-li-mét.', icon: '👁️' },
         { id: 'amulet_sun', name: 'Thái Dương Cổ Thạch', slot: 'AMULET', rarity: 'LEGENDARY', price_gold: 1300, price_gems: 30, bonus_str: 20, bonus_end: 20, bonus_pre: 20, bonus_luck: 25, description: 'Cội nguồn sinh lực vĩnh cửu của mặt trời thiêu đốt.', icon: '☀️' },
+        { id: 'amulet_boss_heart', name: 'Trái Tim Hắc Long', slot: 'AMULET', rarity: 'MYTHIC', price_gold: 4000, price_gems: 100, bonus_str: 30, bonus_end: 30, bonus_pre: 30, bonus_luck: 45, description: 'Tinh hoa sinh mệnh của Siêu Trùm Thế Giới ban phước lành.', icon: '💎' },
+        { id: 'amulet_ouroboros', name: 'Ngọc Bội Vô Cực Ouroboros', slot: 'AMULET', rarity: 'ANCIENT', price_gold: 5800, price_gems: 140, bonus_str: 45, bonus_end: 45, bonus_pre: 45, bonus_luck: 60, description: 'Biểu tượng con rắn cắn đuôi luân hồi, sinh lực dồi dào bất tận.', icon: '♾️' },
+        { id: 'amulet_genesis_spark', name: 'Hỏa Chủng Sáng Thế', slot: 'AMULET', rarity: 'DIVINE', price_gold: 9900, price_gems: 260, bonus_str: 70, bonus_end: 70, bonus_pre: 70, bonus_luck: 90, description: 'Tia lửa ban đầu thắp sáng muôn loài, gia tăng cực hạn mọi chỉ số.', icon: '💥' },
+
+        // 6. VŨ KHÍ (WEAPON)
         { id: 'weapon_stick', name: 'Côn Gỗ Luyện Tập', slot: 'WEAPON', rarity: 'COMMON', price_gold: 50, price_gems: 0, bonus_str: 4, bonus_end: 0, bonus_pre: 2, bonus_luck: 0, description: 'Khúc gỗ sồi chắc nịch dùng để rèn luyện cổ tay.', icon: '🪵' },
+        { id: 'weapon_dagger', name: 'Dao Găm Sát Thủ', slot: 'WEAPON', rarity: 'UNCOMMON', price_gold: 100, price_gems: 0, bonus_str: 7, bonus_end: 0, bonus_pre: 5, bonus_luck: 2, description: 'Lưỡi dao thép đen nhẹ bén, thích hợp luyện tập tốc độ cao.', icon: '🗡️' },
         { id: 'weapon_sword', name: 'Thanh Kiếm Thép Đúc', slot: 'WEAPON', rarity: 'RARE', price_gold: 180, price_gems: 0, bonus_str: 10, bonus_end: 0, bonus_pre: 6, bonus_luck: 0, description: 'Lưỡi kiếm sắc bén rèn từ lò luyện kim hoàng gia.', icon: '⚔️' },
         { id: 'weapon_axe', name: 'Rìu Chiến Berserker', slot: 'WEAPON', rarity: 'EPIC', price_gold: 460, price_gems: 6, bonus_str: 22, bonus_end: 8, bonus_pre: 0, bonus_luck: 0, description: 'Chiếc rìu khổng lồ dành riêng cho những chiến binh cuồng nộ.', icon: '🪓' },
         { id: 'weapon_excalibur', name: 'Thánh Kiếm Excalibur', slot: 'WEAPON', rarity: 'LEGENDARY', price_gold: 1400, price_gems: 30, bonus_str: 35, bonus_end: 0, bonus_pre: 18, bonus_luck: 15, description: 'Bảo kiếm huyền thoại cắm sâu trong đá.', icon: '🗡️' },
-        { id: 'weapon_dragon_slayer', name: 'Đại Đao Trảm Long', slot: 'WEAPON', rarity: 'LEGENDARY', price_gold: 3500, price_gems: 80, bonus_str: 55, bonus_end: 10, bonus_pre: 25, bonus_luck: 20, description: 'Thần binh rèn từ vảy và răng Hắc Long.', icon: '🗡️' },
-        { id: 'armor_dragon_scale', name: 'Long Lân Thần Giáp', slot: 'ARMOR', rarity: 'LEGENDARY', price_gold: 3200, price_gems: 75, bonus_str: 25, bonus_end: 45, bonus_pre: 15, bonus_luck: 20, description: 'Lớp vảy rồng kiên cố bảo vệ toàn thân.', icon: '🐲' },
-        { id: 'amulet_boss_heart', name: 'Trái Tim Hắc Long', slot: 'AMULET', rarity: 'LEGENDARY', price_gold: 4000, price_gems: 100, bonus_str: 25, bonus_end: 25, bonus_pre: 25, bonus_luck: 35, description: 'Tinh hoa sinh mệnh Siêu Trùm Thế Giới.', icon: '💎' }
+        { id: 'weapon_dragon_slayer', name: 'Đại Đao Trảm Long', slot: 'WEAPON', rarity: 'MYTHIC', price_gold: 3500, price_gems: 80, bonus_str: 65, bonus_end: 15, bonus_pre: 35, bonus_luck: 25, description: 'Thần binh rèn từ vảy và răng Hắc Long, uy lực hủy thiên diệt địa.', icon: '🗡️' },
+        { id: 'weapon_gungnir', name: 'Thần Thương Gungnir', slot: 'WEAPON', rarity: 'ANCIENT', price_gold: 6000, price_gems: 150, bonus_str: 85, bonus_end: 25, bonus_pre: 60, bonus_luck: 40, description: 'Ngọn thương thần thoại bách phát bách trúng, uy lực xuyên thủng mọi hàng phòng thủ.', icon: '🔱' },
+        { id: 'weapon_god_slayer', name: 'Đồ Thần Cực Kiếm', slot: 'WEAPON', rarity: 'DIVINE', price_gold: 10000, price_gems: 300, bonus_str: 130, bonus_end: 40, bonus_pre: 80, bonus_luck: 70, description: 'Thần binh chí tôn trảm phá thần ma, đòn đánh xé rách thực tại.', icon: '⚔️' }
     ];
 }
 
@@ -476,13 +494,22 @@ app.post('/api/workout/finish', async (req, res) => {
                 const rollRarity = Math.random();
                 let chosenRarity = 'COMMON';
                 if (isBoss) {
-                    if (rollRarity < Math.min(0.08, 0.02 + totalLuck * 0.001)) chosenRarity = 'LEGENDARY';
-                    else if (rollRarity < Math.min(0.25, 0.12 + totalLuck * 0.002)) chosenRarity = 'EPIC';
-                    else if (rollRarity < 0.60) chosenRarity = 'RARE';
+                    const luckFactor = totalLuck * 0.001;
+                    if (rollRarity < 0.01 + luckFactor * 0.1) chosenRarity = 'DIVINE';
+                    else if (rollRarity < 0.04 + luckFactor * 0.2) chosenRarity = 'ANCIENT';
+                    else if (rollRarity < 0.10 + luckFactor * 0.3) chosenRarity = 'MYTHIC';
+                    else if (rollRarity < 0.22 + luckFactor * 0.4) chosenRarity = 'LEGENDARY';
+                    else if (rollRarity < 0.45) chosenRarity = 'EPIC';
+                    else if (rollRarity < 0.75) chosenRarity = 'RARE';
+                    else chosenRarity = 'UNCOMMON';
                 } else {
-                    if (rollRarity < Math.min(0.02, 0.005 + totalLuck * 0.0005)) chosenRarity = 'LEGENDARY';
-                    else if (rollRarity < Math.min(0.10, 0.04 + totalLuck * 0.001)) chosenRarity = 'EPIC';
-                    else if (rollRarity < 0.35) chosenRarity = 'RARE';
+                    const luckFactor = totalLuck * 0.0005;
+                    if (rollRarity < 0.002 + luckFactor * 0.05) chosenRarity = 'MYTHIC';
+                    else if (rollRarity < 0.015 + luckFactor * 0.1) chosenRarity = 'LEGENDARY';
+                    else if (rollRarity < 0.08 + luckFactor * 0.2) chosenRarity = 'EPIC';
+                    else if (rollRarity < 0.25) chosenRarity = 'RARE';
+                    else if (rollRarity < 0.60) chosenRarity = 'UNCOMMON';
+                    else chosenRarity = 'COMMON';
                 }
 
                 const candidateItems = allItems.filter(i => i.rarity === chosenRarity);
@@ -764,6 +791,197 @@ app.post('/api/guilds/invite', async (req, res) => {
 
             memoryDB.guild_invitations.push({ id: memoryDB.guild_invitations.length + 1, guild_id: guildId, inviter_id: inviter.id, invitee_id: target.id, status: 'PENDING' });
             return res.json({ success: true, message: `Đã gửi lời mời gia nhập bang tới ${targetUsername}!` });
+        }
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// G1. NỘP ĐƠN XIN GIA NHẬP BANG HỘI (Cần Chủ Bang Phê Duyệt)
+app.post('/api/guilds/apply', async (req, res) => {
+    const { username, guildId } = req.body;
+    try {
+        if (!useFallback) {
+            const [users] = await pool.query('SELECT id FROM users WHERE username = ?', [username]);
+            if (users.length === 0) return res.status(404).json({ error: 'Không tìm thấy người chơi!' });
+            const userId = users[0].id;
+
+            const [members] = await pool.query('SELECT id FROM guild_members WHERE user_id = ?', [userId]);
+            if (members.length > 0) return res.status(400).json({ error: 'Bạn đang là thành viên của bang hội khác!' });
+
+            const [existing] = await pool.query('SELECT id, status FROM guild_join_requests WHERE guild_id = ? AND user_id = ?', [guildId, userId]);
+            if (existing.length > 0 && existing[0].status === 'PENDING') {
+                return res.status(400).json({ error: 'Đơn xin gia nhập của bạn đang chờ chủ bang phê duyệt!' });
+            }
+
+            await pool.query(
+                'INSERT INTO guild_join_requests (guild_id, user_id, status) VALUES (?, ?, "PENDING") ON DUPLICATE KEY UPDATE status="PENDING", created_at=CURRENT_TIMESTAMP',
+                [guildId, userId]
+            );
+            return res.json({ success: true, message: 'Đã gửi đơn xin gia nhập! Đang chờ Chủ bang phê duyệt.' });
+        } else {
+            if (!memoryDB.guild_join_requests) memoryDB.guild_join_requests = [];
+            const user = memoryDB.users.find(u => u.username.toLowerCase() === username.toLowerCase());
+            if (!user) return res.status(404).json({ error: 'Không tìm thấy người chơi!' });
+
+            const isMember = memoryDB.guild_members.some(m => m.user_id === user.id);
+            if (isMember) return res.status(400).json({ error: 'Bạn đang là thành viên của bang hội khác!' });
+
+            const pending = memoryDB.guild_join_requests.find(r => r.guild_id == guildId && r.user_id === user.id && r.status === 'PENDING');
+            if (pending) return res.status(400).json({ error: 'Đơn xin gia nhập của bạn đang chờ chủ bang phê duyệt!' });
+
+            memoryDB.guild_join_requests.push({
+                id: memoryDB.guild_join_requests.length + 1,
+                guild_id: parseInt(guildId),
+                user_id: user.id,
+                status: 'PENDING',
+                created_at: new Date().toISOString()
+            });
+            return res.json({ success: true, message: 'Đã gửi đơn xin gia nhập! Đang chờ Chủ bang phê duyệt.' });
+        }
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// G2. HỦY ĐƠN XIN GIA NHẬP BANG HỘI
+app.post('/api/guilds/cancel-application', async (req, res) => {
+    const { username, guildId, applicationId } = req.body;
+    try {
+        if (!useFallback) {
+            const [users] = await pool.query('SELECT id FROM users WHERE username = ?', [username]);
+            if (users.length === 0) return res.status(404).json({ error: 'Không tìm thấy người chơi!' });
+            const userId = users[0].id;
+
+            if (applicationId) {
+                await pool.query('DELETE FROM guild_join_requests WHERE id = ? AND user_id = ?', [applicationId, userId]);
+            } else if (guildId) {
+                await pool.query('DELETE FROM guild_join_requests WHERE guild_id = ? AND user_id = ?', [guildId, userId]);
+            }
+            return res.json({ success: true, message: 'Đã hủy đơn xin gia nhập bang hội.' });
+        } else {
+            if (!memoryDB.guild_join_requests) memoryDB.guild_join_requests = [];
+            const user = memoryDB.users.find(u => u.username.toLowerCase() === username.toLowerCase());
+            if (!user) return res.status(404).json({ error: 'Không tìm thấy người chơi!' });
+
+            memoryDB.guild_join_requests = memoryDB.guild_join_requests.filter(r => {
+                if (applicationId && r.id === parseInt(applicationId) && r.user_id === user.id) return false;
+                if (guildId && r.guild_id === parseInt(guildId) && r.user_id === user.id) return false;
+                return true;
+            });
+            return res.json({ success: true, message: 'Đã hủy đơn xin gia nhập bang hội.' });
+        }
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// G3. LẤY DANH SÁCH ĐƠN XIN GIA NHẬP CHỜ PHÊ DUYỆT (Dành cho Chủ Bang)
+app.get('/api/guilds/applications/:guildId', async (req, res) => {
+    const guildId = parseInt(req.params.guildId);
+    try {
+        if (!useFallback) {
+            const [rows] = await pool.query(`
+                SELECT r.id, r.guild_id, r.user_id, r.status, r.created_at,
+                       u.username, u.avatar, u.level, u.total_reps, g.name as guild_name
+                FROM guild_join_requests r
+                JOIN users u ON r.user_id = u.id
+                JOIN guilds g ON r.guild_id = g.id
+                WHERE r.guild_id = ? AND r.status = 'PENDING'
+                ORDER BY r.id DESC
+            `, [guildId]);
+            return res.json({ success: true, applications: rows });
+        } else {
+            if (!memoryDB.guild_join_requests) memoryDB.guild_join_requests = [];
+            const pendingReqs = memoryDB.guild_join_requests.filter(r => r.guild_id === guildId && r.status === 'PENDING');
+            const applications = pendingReqs.map(r => {
+                const u = memoryDB.users.find(user => user.id === r.user_id) || {};
+                const g = memoryDB.guilds.find(guild => guild.id === r.guild_id) || {};
+                return {
+                    id: r.id,
+                    guild_id: r.guild_id,
+                    user_id: r.user_id,
+                    status: r.status,
+                    created_at: r.created_at,
+                    username: u.username || 'Chiến Binh',
+                    avatar: u.avatar || '🧑‍🎤',
+                    level: u.level || 1,
+                    total_reps: u.total_reps || 0,
+                    guild_name: g.name || ''
+                };
+            });
+            return res.json({ success: true, applications });
+        }
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// G4. PHÊ DUYỆT ĐƠN XIN GIA NHẬP (Chủ Bang chấp thuận)
+app.post('/api/guilds/approve-application', async (req, res) => {
+    const { leaderUsername, applicationId } = req.body;
+    try {
+        if (!useFallback) {
+            const [appRows] = await pool.query('SELECT * FROM guild_join_requests WHERE id = ?', [applicationId]);
+            if (appRows.length === 0) return res.status(404).json({ error: 'Không tìm thấy đơn xin gia nhập!' });
+            const application = appRows[0];
+
+            // Thêm vào thành viên bang
+            await pool.query('INSERT IGNORE INTO guild_members (guild_id, user_id, role) VALUES (?, ?, "MEMBER")',
+                [application.guild_id, application.user_id]);
+
+            // Cập nhật trạng thái đơn
+            await pool.query('UPDATE guild_join_requests SET status = "ACCEPTED" WHERE id = ?', [applicationId]);
+            // Xóa các đơn xin gia nhập bang khác của người chơi này
+            await pool.query('DELETE FROM guild_join_requests WHERE user_id = ? AND id != ?', [application.user_id, applicationId]);
+
+            const [applicant] = await pool.query('SELECT username FROM users WHERE id = ?', [application.user_id]);
+            const applicantName = applicant.length > 0 ? applicant[0].username : 'Thành viên mới';
+            return res.json({ success: true, message: `Đã phê duyệt ${applicantName} gia nhập bang hội!` });
+        } else {
+            if (!memoryDB.guild_join_requests) memoryDB.guild_join_requests = [];
+            const appIdx = memoryDB.guild_join_requests.findIndex(r => r.id === parseInt(applicationId));
+            if (appIdx === -1) return res.status(404).json({ error: 'Không tìm thấy đơn xin gia nhập!' });
+            const application = memoryDB.guild_join_requests[appIdx];
+
+            // Thêm vào guild_members
+            if (!memoryDB.guild_members) memoryDB.guild_members = [];
+            if (!memoryDB.guild_members.some(m => m.user_id === application.user_id)) {
+                memoryDB.guild_members.push({
+                    id: memoryDB.guild_members.length + 1,
+                    guild_id: application.guild_id,
+                    user_id: application.user_id,
+                    role: 'MEMBER'
+                });
+            }
+
+            memoryDB.guild_join_requests.splice(appIdx, 1);
+            // Xóa đơn xin khác
+            memoryDB.guild_join_requests = memoryDB.guild_join_requests.filter(r => r.user_id !== application.user_id);
+
+            const user = memoryDB.users.find(u => u.id === application.user_id);
+            const applicantName = user ? user.username : 'Thành viên mới';
+            return res.json({ success: true, message: `Đã phê duyệt ${applicantName} gia nhập bang hội!` });
+        }
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// G5. TỪ CHỐI ĐƠN XIN GIA NHẬP (Chủ Bang từ chối)
+app.post('/api/guilds/reject-application', async (req, res) => {
+    const { leaderUsername, applicationId } = req.body;
+    try {
+        if (!useFallback) {
+            await pool.query('UPDATE guild_join_requests SET status = "REJECTED" WHERE id = ?', [applicationId]);
+            return res.json({ success: true, message: 'Đã từ chối đơn xin gia nhập bang hội.' });
+        } else {
+            if (!memoryDB.guild_join_requests) memoryDB.guild_join_requests = [];
+            const appIdx = memoryDB.guild_join_requests.findIndex(r => r.id === parseInt(applicationId));
+            if (appIdx !== -1) {
+                memoryDB.guild_join_requests.splice(appIdx, 1);
+            }
+            return res.json({ success: true, message: 'Đã từ chối đơn xin gia nhập bang hội.' });
         }
     } catch (err) {
         res.status(500).json({ error: err.message });

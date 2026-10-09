@@ -389,7 +389,7 @@ fun GuildScreen(vm: GameViewModel, nav: NavController? = null) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).statusBarsPadding().padding(horizontal = 16.dp)) {
         Text("Sảnh & Bang Hội", color = C.Text, fontSize = 34.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 12.dp))
         Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-            listOf("Bang hội", "🔥 Boss Bang", "Thế giới", "Bạn bè").forEachIndexed { i, t ->
+            listOf("Bang hội", "Boss Bang", "Thế giới", "Bạn bè").forEachIndexed { i, t ->
                 Text(
                     t,
                     color = if (tab == i) C.Text else C.Muted,
@@ -479,59 +479,103 @@ fun GuildScreen(vm: GameViewModel, nav: NavController? = null) {
                                     .border(1.dp, Color(0xFFEF4444).copy(alpha = 0.6f), RoundedCornerShape(12.dp))
                                     .clickable { vm.leaveGuild() }
                                     .padding(horizontal = 14.dp, vertical = 10.dp)
-                            ) {
-                                Text(if (myGuild.isUserLeader) "Giải tán bang" else "Rời bang", color = Color(0xFFFCA5A5), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                ) {
+                                    Text(if (myGuild.isUserLeader) "Giải tán bang" else "Rời bang", color = Color(0xFFFCA5A5), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
                             }
                         }
-                    }
 
-                    // Banner Boss Thế Giới Bang Hội (Truy cập nhanh)
-                    val bossBanner = vm.guildBossInfo?.boss
-                    Spacer(Modifier.height(14.dp))
-                    VCard(
-                        border = if (bossBanner != null && bossBanner.isDefeated) C.Green else Color(0xFFEF4444),
-                        modifier = Modifier.clickable { tab = 1 }
-                    ) {
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
+                        // Banner Boss Thế Giới Bang Hội (Truy cập nhanh)
+                        val bossBanner = vm.guildBossInfo?.boss
+                        Spacer(Modifier.height(14.dp))
+                        VCard(
+                            border = if (bossBanner != null && bossBanner.isDefeated) C.Green else Color(0xFFEF4444),
+                            modifier = Modifier.clickable { tab = 1 }
                         ) {
-                            Box(
-                                Modifier.size(50.dp).clip(CircleShape).background(Color(0xFF38151E)),
-                                contentAlignment = Alignment.Center
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(bossBanner?.avatar ?: "🐉", fontSize = 28.sp)
-                            }
-                            Spacer(Modifier.width(12.dp))
-                            Column(Modifier.weight(1f)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(bossBanner?.name ?: "Hắc Long Viễn Cổ - Nidhogg", color = C.Text, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                                    Spacer(Modifier.width(6.dp))
-                                    if (bossBanner != null && bossBanner.isDefeated) {
-                                        Text("🏆 ĐÃ HẠ", color = C.Green, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                Box(
+                                    Modifier.size(50.dp).clip(CircleShape).background(Color(0xFF38151E)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(bossBanner?.avatar ?: "🐉", fontSize = 28.sp)
+                                }
+                                Spacer(Modifier.width(12.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(bossBanner?.name ?: "Hắc Long Viễn Cổ - Nidhogg", color = C.Text, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                                        Spacer(Modifier.width(6.dp))
+                                        if (bossBanner != null && bossBanner.isDefeated) {
+                                            Text("🏆 ĐÃ HẠ", color = C.Green, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                        } else {
+                                            Text("🔥 BOSS THẾ GIỚI", color = Color(0xFFEF4444), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                    if (bossBanner != null) {
+                                        Text("${bossBanner.currentHp}/${bossBanner.maxHp} HP (${String.format(Locale.US, "%.1f%%", bossBanner.hpRatio * 100)})", color = C.Muted, fontSize = 12.sp)
                                     } else {
-                                        Text("🔥 BOSS THẾ GIỚI", color = Color(0xFFEF4444), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                        Text("Cùng bang hội tập luyện săn Boss nhận đồ Thần Thoại!", color = C.Muted, fontSize = 12.sp)
                                     }
                                 }
-                                if (bossBanner != null) {
-                                    Text("${bossBanner.currentHp}/${bossBanner.maxHp} HP (${String.format(Locale.US, "%.1f%%", bossBanner.hpRatio * 100)})", color = C.Muted, fontSize = 12.sp)
-                                } else {
-                                    Text("Cùng bang hội tập luyện săn Boss nhận đồ Thần Thoại!", color = C.Muted, fontSize = 12.sp)
+                                Box(
+                                    Modifier
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(if (bossBanner != null && bossBanner.isDefeated) C.Green else Color(0xFFEF4444))
+                                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                                ) {
+                                    Text(if (bossBanner != null && bossBanner.isDefeated) "Xem quà" else "Vào Săn", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                 }
                             }
-                            Box(
-                                Modifier
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(if (bossBanner != null && bossBanner.isDefeated) C.Green else Color(0xFFEF4444))
-                                    .padding(horizontal = 10.dp, vertical = 6.dp)
-                            ) {
-                                Text(if (bossBanner != null && bossBanner.isDefeated) "Xem quà" else "Vào Săn", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        // Danh sách đơn xin gia nhập bang hội cần phê duyệt (Dành cho Chủ Bang)
+                        if (myGuild.isUserLeader && vm.pendingGuildApplications.isNotEmpty()) {
+                            Spacer(Modifier.height(14.dp))
+                            SectionLabel("📋 Đơn xin gia nhập bang (${vm.pendingGuildApplications.size})")
+                            vm.pendingGuildApplications.forEach { app ->
+                                VCard(border = C.Yellow, modifier = Modifier.padding(bottom = 8.dp)) {
+                                    Row(
+                                        Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(Modifier.size(42.dp).clip(CircleShape).background(Color(0xFF2C2450)), contentAlignment = Alignment.Center) {
+                                            Text(app.avatar, fontSize = 22.sp)
+                                        }
+                                        Spacer(Modifier.width(10.dp))
+                                        Column(Modifier.weight(1f)) {
+                                            Text(app.username, color = C.Text, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                                            Text("Cấp ${app.level} • ${app.totalReps} Reps", color = C.Muted, fontSize = 12.sp)
+                                        }
+                                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(8.dp))
+                                                    .background(C.Green)
+                                                    .clickable { vm.approveGuildApplication(app.id) }
+                                                    .padding(horizontal = 10.dp, vertical = 6.dp)
+                                            ) {
+                                                Text("✓ Duyệt", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                            }
+                                            Box(
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(8.dp))
+                                                    .background(Color(0xFF301C24))
+                                                    .border(1.dp, Color(0xFFEF4444).copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                                                    .clickable { vm.rejectGuildApplication(app.id) }
+                                                    .padding(horizontal = 10.dp, vertical = 6.dp)
+                                            ) {
+                                                Text("✕ Từ chối", color = Color(0xFFFCA5A5), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
-                    }
 
-                    Spacer(Modifier.height(14.dp))
-                    SectionLabel("Thành viên bang hội (${vm.guildMembers.size})")
+                        Spacer(Modifier.height(14.dp))
+                        SectionLabel("Thành viên bang hội (${vm.guildMembers.size})")
 
                     vm.guildMembers.forEach { member ->
                         VCard(Modifier.padding(bottom = 8.dp)) {
@@ -662,14 +706,31 @@ fun GuildScreen(vm: GameViewModel, nav: NavController? = null) {
                                     Text("Cấp ${g.level} · ${g.memberCount}/30 thành viên · Chủ: ${g.leaderName}", color = C.Muted, fontSize = 12.sp)
                                     if (g.slogan.isNotBlank()) Quote(g.slogan)
                                 }
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(14.dp))
-                                        .background(C.Purple)
-                                        .clickable { vm.joinGuild(g.id) }
-                                        .padding(horizontal = 14.dp, vertical = 10.dp)
-                                ) {
-                                    Text("Gia nhập", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                if (g.isHasPendingApplication) {
+                                    Column(horizontalAlignment = Alignment.End) {
+                                        Text("⏳ Chờ duyệt", color = C.Yellow, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                        Spacer(Modifier.height(4.dp))
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(Color(0xFF331C26))
+                                                .border(1.dp, Color(0xFFEF4444).copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                                                .clickable { vm.cancelGuildApplication(g.id) }
+                                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                                        ) {
+                                            Text("Hủy đơn", color = Color(0xFFFCA5A5), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                } else {
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(14.dp))
+                                            .background(C.Purple)
+                                            .clickable { vm.applyToGuild(g.id) }
+                                            .padding(horizontal = 14.dp, vertical = 10.dp)
+                                    ) {
+                                        Text("Xin vào", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                    }
                                 }
                             }
                         }
