@@ -485,50 +485,7 @@ fun GuildScreen(vm: GameViewModel, nav: NavController? = null) {
                             }
                         }
 
-                        // Banner Boss Thế Giới Bang Hội (Truy cập nhanh)
-                        val bossBanner = vm.guildBossInfo?.boss
-                        Spacer(Modifier.height(14.dp))
-                        VCard(
-                            border = if (bossBanner != null && bossBanner.isDefeated) C.Green else Color(0xFFEF4444),
-                            modifier = Modifier.clickable { tab = 1 }
-                        ) {
-                            Row(
-                                Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Box(
-                                    Modifier.size(50.dp).clip(CircleShape).background(Color(0xFF38151E)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(bossBanner?.avatar ?: "🐉", fontSize = 28.sp)
-                                }
-                                Spacer(Modifier.width(12.dp))
-                                Column(Modifier.weight(1f)) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text(bossBanner?.name ?: "Hắc Long Viễn Cổ - Nidhogg", color = C.Text, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                                        Spacer(Modifier.width(6.dp))
-                                        if (bossBanner != null && bossBanner.isDefeated) {
-                                            Text("🏆 ĐÃ HẠ", color = C.Green, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                                        } else {
-                                            Text("🔥 BOSS THẾ GIỚI", color = Color(0xFFEF4444), fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                                        }
-                                    }
-                                    if (bossBanner != null) {
-                                        Text("${bossBanner.currentHp}/${bossBanner.maxHp} HP (${String.format(Locale.US, "%.1f%%", bossBanner.hpRatio * 100)})", color = C.Muted, fontSize = 12.sp)
-                                    } else {
-                                        Text("Cùng bang hội tập luyện săn Boss nhận đồ Thần Thoại!", color = C.Muted, fontSize = 12.sp)
-                                    }
-                                }
-                                Box(
-                                    Modifier
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .background(if (bossBanner != null && bossBanner.isDefeated) C.Green else Color(0xFFEF4444))
-                                        .padding(horizontal = 10.dp, vertical = 6.dp)
-                                ) {
-                                    Text(if (bossBanner != null && bossBanner.isDefeated) "Xem quà" else "Vào Săn", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                }
-                            }
-                        }
+
 
                         // Danh sách đơn xin gia nhập bang hội cần phê duyệt (Dành cho Chủ Bang)
                         if (myGuild.isUserLeader && vm.pendingGuildApplications.isNotEmpty()) {
@@ -3049,7 +3006,7 @@ fun GuildWorldBossTab(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        "⚔️ KHIÊU CHIẾN GÓP DAME (AI CAMERA) ⚔️",
+                        "⚔️ KHIÊU CHIẾN ⚔️",
                         color = Color.White,
                         fontWeight = FontWeight.ExtraBold,
                         fontSize = 14.sp
