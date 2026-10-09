@@ -40,7 +40,25 @@ let memoryDB = {
         { id: 1, user_id: 1, friend_id: 2 },
         { id: 2, user_id: 2, friend_id: 1 }
     ],
-    workouts: []
+    workouts: [],
+    guilds: [
+        { id: 1, name: 'Taiwan Fitness 🇹🇼', badge: '🇹🇼', slogan: 'Pushing for improvement every single rep!', leader_id: 2, level: 2 },
+        { id: 2, name: 'Chiến Binh Rồng 🐉', badge: '🐉', slogan: 'Ý chí rèn luyện tựa long thần!', leader_id: 5, level: 3 },
+        { id: 3, name: 'Titan Thép 🗿', badge: '🗿', slogan: 'Cơ bắp vững chắc như bàn thạch.', leader_id: 4, level: 4 }
+    ],
+    guild_members: [
+        { id: 1, guild_id: 1, user_id: 2, role: 'LEADER' },
+        { id: 2, guild_id: 2, user_id: 5, role: 'LEADER' },
+        { id: 3, guild_id: 3, user_id: 4, role: 'LEADER' }
+    ],
+    guild_bosses: [
+        { id: 1, guild_id: 1, boss_id: 'boss_nether_dragon', boss_name: 'Hắc Long Viễn Cổ - Nidhogg', boss_title: 'SIÊU TRÙM THẾ GIỚI BANG HỘI', boss_avatar: '🐉', max_hp: 500000, current_hp: 385000, status: 'ACTIVE', reward_gold: 15000, reward_gems: 350, reward_item_id: 'weapon_dragon_slayer' },
+        { id: 2, guild_id: 2, boss_id: 'boss_inferno_titan', boss_name: 'Cự Nhân Hỏa Ngục - Surtr', boss_title: 'SIÊU TRÙM THẾ GIỚI BANG HỘI', boss_avatar: '🌋', max_hp: 600000, current_hp: 490000, status: 'ACTIVE', reward_gold: 18000, reward_gems: 400, reward_item_id: 'armor_dragon_scale' },
+        { id: 3, guild_id: 3, boss_id: 'boss_void_behemoth', boss_name: 'Thần Thú Hư Không - Leviathan', boss_title: 'SIÊU TRÙM THẾ GIỚI BANG HỘI', boss_avatar: '🐲', max_hp: 750000, current_hp: 750000, status: 'ACTIVE', reward_gold: 22000, reward_gems: 500, reward_item_id: 'amulet_boss_heart' }
+    ],
+    guild_boss_damage: [
+        { id: 1, guild_id: 1, boss_db_id: 1, user_id: 2, damage: 115000, reps_contributed: 120, has_claimed_defeat_reward: false }
+    ]
 };
 
 // Khởi tạo Database
@@ -105,7 +123,10 @@ function loadSampleMemoryItems() {
         { id: 'weapon_stick', name: 'Côn Gỗ Luyện Tập', slot: 'WEAPON', rarity: 'COMMON', price_gold: 50, price_gems: 0, bonus_str: 4, bonus_end: 0, bonus_pre: 2, bonus_luck: 0, description: 'Khúc gỗ sồi chắc nịch dùng để rèn luyện cổ tay.', icon: '🪵' },
         { id: 'weapon_sword', name: 'Thanh Kiếm Thép Đúc', slot: 'WEAPON', rarity: 'RARE', price_gold: 180, price_gems: 0, bonus_str: 10, bonus_end: 0, bonus_pre: 6, bonus_luck: 0, description: 'Lưỡi kiếm sắc bén rèn từ lò luyện kim hoàng gia.', icon: '⚔️' },
         { id: 'weapon_axe', name: 'Rìu Chiến Berserker', slot: 'WEAPON', rarity: 'EPIC', price_gold: 460, price_gems: 6, bonus_str: 22, bonus_end: 8, bonus_pre: 0, bonus_luck: 0, description: 'Chiếc rìu khổng lồ dành riêng cho những chiến binh cuồng nộ.', icon: '🪓' },
-        { id: 'weapon_excalibur', name: 'Thánh Kiếm Excalibur', slot: 'WEAPON', rarity: 'LEGENDARY', price_gold: 1400, price_gems: 30, bonus_str: 35, bonus_end: 0, bonus_pre: 18, bonus_luck: 15, description: 'Bảo kiếm huyền thoại cắm sâu trong đá.', icon: '🗡️' }
+        { id: 'weapon_excalibur', name: 'Thánh Kiếm Excalibur', slot: 'WEAPON', rarity: 'LEGENDARY', price_gold: 1400, price_gems: 30, bonus_str: 35, bonus_end: 0, bonus_pre: 18, bonus_luck: 15, description: 'Bảo kiếm huyền thoại cắm sâu trong đá.', icon: '🗡️' },
+        { id: 'weapon_dragon_slayer', name: 'Đại Đao Trảm Long', slot: 'WEAPON', rarity: 'LEGENDARY', price_gold: 3500, price_gems: 80, bonus_str: 55, bonus_end: 10, bonus_pre: 25, bonus_luck: 20, description: 'Thần binh rèn từ vảy và răng Hắc Long.', icon: '🗡️' },
+        { id: 'armor_dragon_scale', name: 'Long Lân Thần Giáp', slot: 'ARMOR', rarity: 'LEGENDARY', price_gold: 3200, price_gems: 75, bonus_str: 25, bonus_end: 45, bonus_pre: 15, bonus_luck: 20, description: 'Lớp vảy rồng kiên cố bảo vệ toàn thân.', icon: '🐲' },
+        { id: 'amulet_boss_heart', name: 'Trái Tim Hắc Long', slot: 'AMULET', rarity: 'LEGENDARY', price_gold: 4000, price_gems: 100, bonus_str: 25, bonus_end: 25, bonus_pre: 25, bonus_luck: 35, description: 'Tinh hoa sinh mệnh Siêu Trùm Thế Giới.', icon: '💎' }
     ];
 }
 
@@ -651,6 +672,104 @@ app.post('/api/friends/remove', async (req, res) => {
     }
 });
 
+// D. GỬI LỜI MỜI KẾT BẠN
+app.post('/api/friends/request', async (req, res) => {
+    const { username, targetUsername } = req.body;
+    if (!username || !targetUsername) return res.status(400).json({ error: 'Thiếu thông tin người chơi!' });
+    if (username.toLowerCase() === targetUsername.toLowerCase()) return res.status(400).json({ error: 'Không thể kết bạn với chính mình!' });
+
+    try {
+        if (!useFallback) {
+            const [senders] = await pool.query('SELECT id FROM users WHERE username = ?', [username]);
+            const [receivers] = await pool.query('SELECT id FROM users WHERE username = ?', [targetUsername]);
+            if (senders.length === 0 || receivers.length === 0) return res.status(404).json({ error: 'Không tìm thấy người chơi!' });
+            const sId = senders[0].id;
+            const rId = receivers[0].id;
+
+            const [friends] = await pool.query('SELECT id FROM friends WHERE user_id = ? AND friend_id = ?', [sId, rId]);
+            if (friends.length > 0) return res.status(400).json({ error: 'Hai bạn đã là bạn bè!' });
+
+            await pool.query('INSERT INTO friend_requests (sender_id, receiver_id, status) VALUES (?, ?, "PENDING") ON DUPLICATE KEY UPDATE status="PENDING"', [sId, rId]);
+            return res.json({ success: true, message: `Đã gửi lời mời kết bạn tới ${targetUsername}!` });
+        } else {
+            if (!memoryDB.friend_requests) memoryDB.friend_requests = [];
+            const sender = memoryDB.users.find(u => u.username.toLowerCase() === username.toLowerCase());
+            const receiver = memoryDB.users.find(u => u.username.toLowerCase() === targetUsername.toLowerCase());
+            if (!sender || !receiver) return res.status(404).json({ error: 'Không tìm thấy người chơi!' });
+
+            memoryDB.friend_requests.push({ id: memoryDB.friend_requests.length + 1, sender_id: sender.id, receiver_id: receiver.id, status: 'PENDING' });
+            return res.json({ success: true, message: `Đã gửi lời mời kết bạn tới ${targetUsername}!` });
+        }
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// E. PHẢN HỒI LỜI MỜI KẾT BẠN (CHẤP NHẬN HOẶC TỪ CHỐI)
+app.post('/api/friends/respond', async (req, res) => {
+    const { username, requestId, action } = req.body; // action: 'ACCEPT' or 'DECLINE'
+    try {
+        if (!useFallback) {
+            const [reqs] = await pool.query('SELECT fr.*, u.username as sender_name FROM friend_requests fr JOIN users u ON fr.sender_id = u.id WHERE fr.id = ?', [requestId]);
+            if (reqs.length === 0) return res.status(404).json({ error: 'Không tìm thấy lời mời!' });
+            const fr = reqs[0];
+
+            if (action === 'ACCEPT') {
+                await pool.query('INSERT IGNORE INTO friends (user_id, friend_id) VALUES (?, ?), (?, ?)', [fr.sender_id, fr.receiver_id, fr.receiver_id, fr.sender_id]);
+                await pool.query('DELETE FROM friend_requests WHERE id = ?', [requestId]);
+                return res.json({ success: true, message: `Đã chấp nhận lời mời kết bạn từ ${fr.sender_name}!` });
+            } else {
+                await pool.query('DELETE FROM friend_requests WHERE id = ?', [requestId]);
+                return res.json({ success: true, message: 'Đã từ chối lời mời kết bạn.' });
+            }
+        } else {
+            if (!memoryDB.friend_requests) memoryDB.friend_requests = [];
+            const idx = memoryDB.friend_requests.findIndex(r => r.id === requestId);
+            if (idx === -1) return res.status(404).json({ error: 'Không tìm thấy lời mời!' });
+            const fr = memoryDB.friend_requests[idx];
+
+            if (action === 'ACCEPT') {
+                if (!memoryDB.friends) memoryDB.friends = [];
+                memoryDB.friends.push({ id: memoryDB.friends.length + 1, user_id: fr.sender_id, friend_id: fr.receiver_id });
+                memoryDB.friends.push({ id: memoryDB.friends.length + 1, user_id: fr.receiver_id, friend_id: fr.sender_id });
+                memoryDB.friend_requests.splice(idx, 1);
+                return res.json({ success: true, message: 'Đã chấp nhận lời mời kết bạn!' });
+            } else {
+                memoryDB.friend_requests.splice(idx, 1);
+                return res.json({ success: true, message: 'Đã từ chối lời mời kết bạn.' });
+            }
+        }
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// F. GỬI LỜI MỜI GIA NHẬP BANG HỘI
+app.post('/api/guilds/invite', async (req, res) => {
+    const { inviterUsername, targetUsername, guildId } = req.body;
+    try {
+        if (!useFallback) {
+            const [inviters] = await pool.query('SELECT id FROM users WHERE username = ?', [inviterUsername]);
+            const [targets] = await pool.query('SELECT id FROM users WHERE username = ?', [targetUsername]);
+            if (inviters.length === 0 || targets.length === 0) return res.status(404).json({ error: 'Không tìm thấy người chơi!' });
+
+            await pool.query('INSERT INTO guild_invitations (guild_id, inviter_id, invitee_id, status) VALUES (?, ?, ?, "PENDING")', 
+                [guildId, inviters[0].id, targets[0].id]);
+            return res.json({ success: true, message: `Đã gửi lời mời gia nhập bang tới ${targetUsername}!` });
+        } else {
+            if (!memoryDB.guild_invitations) memoryDB.guild_invitations = [];
+            const inviter = memoryDB.users.find(u => u.username.toLowerCase() === inviterUsername.toLowerCase());
+            const target = memoryDB.users.find(u => u.username.toLowerCase() === targetUsername.toLowerCase());
+            if (!inviter || !target) return res.status(404).json({ error: 'Không tìm thấy người chơi!' });
+
+            memoryDB.guild_invitations.push({ id: memoryDB.guild_invitations.length + 1, guild_id: guildId, inviter_id: inviter.id, invitee_id: target.id, status: 'PENDING' });
+            return res.json({ success: true, message: `Đã gửi lời mời gia nhập bang tới ${targetUsername}!` });
+        }
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // D. BẢNG XẾP HẠNG THẾ GIỚI (World Leaderboard theo Lực Chiến, Cấp Độ, Reps, Streak)
 app.get('/api/leaderboard', async (req, res) => {
     const { username, sortBy = 'CP' } = req.query;
@@ -738,6 +857,478 @@ app.get('/api/leaderboard', async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 });
+
+// ====================================================================
+// G. BOSS THẾ GIỚI BANG HỘI (GUILD WORLD BOSS RAID APIs)
+// ====================================================================
+
+// Danh mục các Siêu Trùm Thế Giới xoay tua
+const WORLD_BOSS_TEMPLATES = [
+    {
+        bossId: 'boss_nether_dragon',
+        name: 'Hắc Long Viễn Cổ - Nidhogg',
+        title: 'SIÊU TRÙM THẾ GIỚI BANG HỘI',
+        avatar: '🐉',
+        maxHp: 500000,
+        rewardGold: 15000,
+        rewardGems: 350,
+        rewardItemId: 'weapon_dragon_slayer',
+        rewardItemName: 'Đại Đao Trảm Long'
+    },
+    {
+        bossId: 'boss_inferno_titan',
+        name: 'Cự Nhân Hỏa Ngục - Surtr',
+        title: 'SIÊU TRÙM THẾ GIỚI BANG HỘI',
+        avatar: '🌋',
+        maxHp: 650000,
+        rewardGold: 18000,
+        rewardGems: 400,
+        rewardItemId: 'armor_dragon_scale',
+        rewardItemName: 'Long Lân Thần Giáp'
+    },
+    {
+        bossId: 'boss_void_behemoth',
+        name: 'Thần Thú Hư Không - Leviathan',
+        title: 'SIÊU TRÙM THẾ GIỚI BANG HỘI',
+        avatar: '🐲',
+        maxHp: 800000,
+        rewardGold: 22000,
+        rewardGems: 500,
+        rewardItemId: 'amulet_boss_heart',
+        rewardItemName: 'Trái Tim Hắc Long'
+    }
+];
+
+// 1. Lấy thông tin Boss Thế Giới hiện tại của Bang và danh sách đóng góp sát thương
+app.get('/api/guild/boss', async (req, res) => {
+    const guildId = parseInt(req.query.guildId) || 1;
+    const username = req.query.username || '';
+
+    try {
+        if (!useFallback) {
+            // Kiểm tra Boss hiện tại của bang
+            let [bosses] = await pool.query(
+                'SELECT * FROM guild_boss WHERE guild_id = ? ORDER BY id DESC LIMIT 1',
+                [guildId]
+            );
+
+            let boss = bosses.length > 0 ? bosses[0] : null;
+            if (!boss) {
+                // Tạo mới boss mặc định nếu chưa có
+                const tpl = WORLD_BOSS_TEMPLATES[0];
+                const [ins] = await pool.query(
+                    `INSERT INTO guild_boss (guild_id, boss_id, boss_name, boss_title, boss_avatar, max_hp, current_hp, status, reward_gold, reward_gems, reward_item_id)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, 'ACTIVE', ?, ?, ?)`,
+                    [guildId, tpl.bossId, tpl.name, tpl.title, tpl.avatar, tpl.maxHp, tpl.maxHp, tpl.rewardGold, tpl.rewardGems, tpl.rewardItemId]
+                );
+                const [created] = await pool.query('SELECT * FROM guild_boss WHERE id = ?', [ins.insertId]);
+                boss = created[0];
+            }
+
+            // Lấy danh sách thành viên đóng góp sát thương
+            const [rows] = await pool.query(`
+                SELECT gbd.user_id, u.username, u.avatar, u.level, gbd.damage, gbd.reps_contributed, gbd.has_claimed_defeat_reward
+                FROM guild_boss_damage gbd
+                JOIN users u ON gbd.user_id = u.id
+                WHERE gbd.boss_db_id = ?
+                ORDER BY gbd.damage DESC
+            `, [boss.id]);
+
+            const totalDamageDealt = rows.reduce((acc, r) => acc + (r.damage || 0), 0);
+            const contributors = rows.map((r, idx) => ({
+                userId: r.user_id,
+                username: r.username,
+                avatar: r.avatar || '🧑‍🎤',
+                level: r.level,
+                damage: r.damage,
+                reps: r.reps_contributed,
+                percentage: totalDamageDealt > 0 ? parseFloat(((r.damage / totalDamageDealt) * 100).toFixed(1)) : 0,
+                rank: idx + 1,
+                hasClaimed: Boolean(r.has_claimed_defeat_reward)
+            }));
+
+            // Tìm thông tin đóng góp của người chơi hiện tại
+            let myContribution = { damage: 0, reps: 0, percentage: 0, rank: 0, hasClaimedDefeatReward: false };
+            if (username) {
+                const found = contributors.find(c => c.username.toLowerCase() === username.toLowerCase());
+                if (found) {
+                    myContribution = {
+                        damage: found.damage,
+                        reps: found.reps,
+                        percentage: found.percentage,
+                        rank: found.rank,
+                        hasClaimedDefeatReward: found.hasClaimed
+                    };
+                }
+            }
+
+            // Lấy thông tin chi tiết vật phẩm phần thưởng
+            const [itemRows] = await pool.query('SELECT name FROM items WHERE id = ?', [boss.reward_item_id]);
+            const rewardItemName = itemRows.length > 0 ? itemRows[0].name : 'Vật Phẩm Huyền Thoại';
+
+            return res.json({
+                success: true,
+                boss: {
+                    id: boss.id,
+                    guildId: boss.guild_id,
+                    bossId: boss.boss_id,
+                    name: boss.boss_name,
+                    title: boss.boss_title,
+                    avatar: boss.boss_avatar,
+                    maxHp: boss.max_hp,
+                    currentHp: boss.current_hp,
+                    status: boss.status,
+                    rewardGold: boss.reward_gold,
+                    rewardGems: boss.reward_gems,
+                    rewardItemId: boss.reward_item_id,
+                    rewardItemName: rewardItemName
+                },
+                contributors,
+                myContribution
+            });
+        } else {
+            // Chế độ In-Memory Fallback
+            if (!memoryDB.guild_bosses) memoryDB.guild_bosses = [];
+            let boss = memoryDB.guild_bosses.slice().reverse().find(b => b.guild_id == guildId);
+            if (!boss) {
+                const tpl = WORLD_BOSS_TEMPLATES[0];
+                boss = {
+                    id: memoryDB.guild_bosses.length + 1,
+                    guild_id: guildId,
+                    boss_id: tpl.bossId,
+                    boss_name: tpl.name,
+                    boss_title: tpl.title,
+                    boss_avatar: tpl.avatar,
+                    max_hp: tpl.maxHp,
+                    current_hp: tpl.maxHp,
+                    status: 'ACTIVE',
+                    reward_gold: tpl.rewardGold,
+                    reward_gems: tpl.rewardGems,
+                    reward_item_id: tpl.rewardItemId
+                };
+                memoryDB.guild_bosses.push(boss);
+            }
+
+            if (!memoryDB.guild_boss_damage) memoryDB.guild_boss_damage = [];
+            const damages = memoryDB.guild_boss_damage.filter(d => d.boss_db_id === boss.id);
+            damages.sort((a, b) => b.damage - a.damage);
+
+            const totalDamageDealt = damages.reduce((acc, d) => acc + d.damage, 0);
+            const contributors = damages.map((d, idx) => {
+                const u = memoryDB.users.find(usr => usr.id === d.user_id) || { username: 'Anh Hùng', avatar: '🧑‍🎤', level: 1 };
+                return {
+                    userId: d.user_id,
+                    username: u.username,
+                    avatar: u.avatar || '🧑‍🎤',
+                    level: u.level || 1,
+                    damage: d.damage,
+                    reps: d.reps_contributed || 0,
+                    percentage: totalDamageDealt > 0 ? parseFloat(((d.damage / totalDamageDealt) * 100).toFixed(1)) : 0,
+                    rank: idx + 1,
+                    hasClaimed: Boolean(d.has_claimed_defeat_reward)
+                };
+            });
+
+            let myContribution = { damage: 0, reps: 0, percentage: 0, rank: 0, hasClaimedDefeatReward: false };
+            if (username) {
+                const found = contributors.find(c => c.username.toLowerCase() === username.toLowerCase());
+                if (found) {
+                    myContribution = {
+                        damage: found.damage,
+                        reps: found.reps,
+                        percentage: found.percentage,
+                        rank: found.rank,
+                        hasClaimedDefeatReward: found.hasClaimed
+                    };
+                }
+            }
+
+            const item = (memoryDB.items || []).find(it => it.id === boss.reward_item_id);
+            const rewardItemName = item ? item.name : 'Vật Phẩm Huyền Thoại';
+
+            return res.json({
+                success: true,
+                boss: {
+                    id: boss.id,
+                    guildId: boss.guild_id,
+                    bossId: boss.boss_id,
+                    name: boss.boss_name,
+                    title: boss.boss_title,
+                    avatar: boss.boss_avatar,
+                    maxHp: boss.max_hp,
+                    currentHp: boss.current_hp,
+                    status: boss.status,
+                    rewardGold: boss.reward_gold,
+                    rewardGems: boss.reward_gems,
+                    rewardItemId: boss.reward_item_id,
+                    rewardItemName: rewardItemName
+                },
+                contributors,
+                myContribution
+            });
+        }
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// 2. Tấn công Boss Thế Giới (Góp sát thương từ buổi tập)
+app.post('/api/guild/boss/attack', async (req, res) => {
+    const { guildId, username, damage, reps, exercise } = req.body;
+    const dmg = Math.max(1, parseInt(damage) || 100);
+    const repCount = Math.max(1, parseInt(reps) || 1);
+
+    try {
+        if (!useFallback) {
+            const [users] = await pool.query('SELECT id, gold, xp, total_reps FROM users WHERE username = ?', [username]);
+            if (users.length === 0) return res.status(404).json({ error: 'Không tìm thấy người chơi!' });
+            const user = users[0];
+
+            let [bosses] = await pool.query(
+                'SELECT * FROM guild_boss WHERE guild_id = ? AND status = "ACTIVE" ORDER BY id DESC LIMIT 1',
+                [guildId]
+            );
+
+            if (bosses.length === 0) {
+                return res.status(400).json({ error: 'Boss hiện tại đã bị tiêu diệt hoặc chưa được triệu hồi!' });
+            }
+            const boss = bosses[0];
+
+            // Trừ máu Boss
+            const newHp = Math.max(0, boss.current_hp - dmg);
+            const isDefeated = newHp === 0;
+
+            await pool.query(
+                'UPDATE guild_boss SET current_hp = ?, status = ?, defeated_at = ? WHERE id = ?',
+                [newHp, isDefeated ? 'DEFEATED' : 'ACTIVE', isDefeated ? new Date() : null, boss.id]
+            );
+
+            // Ghi nhận sát thương đóng góp của thành viên
+            await pool.query(`
+                INSERT INTO guild_boss_damage (guild_id, boss_db_id, user_id, damage, reps_contributed)
+                VALUES (?, ?, ?, ?, ?)
+                ON DUPLICATE KEY UPDATE
+                    damage = damage + VALUES(damage),
+                    reps_contributed = reps_contributed + VALUES(reps_contributed)
+            `, [guildId, boss.id, user.id, dmg, repCount]);
+
+            // Thưởng nhanh cho thành viên mỗi lượt tập: vàng = reps * 2, xp = reps * 5
+            const effortGold = repCount * 2;
+            const effortXp = repCount * 5;
+            await pool.query(
+                'UPDATE users SET gold = gold + ?, xp = xp + ?, total_reps = total_reps + ? WHERE id = ?',
+                [effortGold, effortXp, repCount, user.id]
+            );
+
+            // Ghi log vào workouts
+            await pool.query(
+                'INSERT INTO workouts (user_id, exercise, reps, score, xp_earned, gold_earned) VALUES (?, ?, ?, ?, ?, ?)',
+                [user.id, exercise || 'SQUAT', repCount, dmg, effortXp, effortGold]
+            );
+
+            return res.json({
+                success: true,
+                message: isDefeated ? `🎉 Tuyệt đỉnh! Bạn và bang hội đã kết liễu ${boss.boss_name}!` : `⚔️ Đã gây ${dmg} sát thương lên ${boss.boss_name}!`,
+                damageDealt: dmg,
+                reps: repCount,
+                bossRemainingHp: newHp,
+                isDefeated: isDefeated,
+                effortGold,
+                effortXp
+            });
+        } else {
+            // Fallback in-memory
+            const user = memoryDB.users.find(u => u.username.toLowerCase() === username.toLowerCase());
+            if (!user) return res.status(404).json({ error: 'Không tìm thấy người chơi!' });
+
+            if (!memoryDB.guild_bosses) memoryDB.guild_bosses = [];
+            let boss = memoryDB.guild_bosses.slice().reverse().find(b => b.guild_id == guildId && b.status === 'ACTIVE');
+            if (!boss) return res.status(400).json({ error: 'Boss hiện tại đã bị tiêu diệt hoặc chưa được triệu hồi!' });
+
+            const newHp = Math.max(0, boss.current_hp - dmg);
+            const isDefeated = newHp === 0;
+            boss.current_hp = newHp;
+            if (isDefeated) {
+                boss.status = 'DEFEATED';
+                boss.defeated_at = new Date().toISOString();
+            }
+
+            if (!memoryDB.guild_boss_damage) memoryDB.guild_boss_damage = [];
+            let record = memoryDB.guild_boss_damage.find(d => d.boss_db_id === boss.id && d.user_id === user.id);
+            if (record) {
+                record.damage += dmg;
+                record.reps_contributed = (record.reps_contributed || 0) + repCount;
+            } else {
+                memoryDB.guild_boss_damage.push({
+                    id: memoryDB.guild_boss_damage.length + 1,
+                    guild_id: guildId,
+                    boss_db_id: boss.id,
+                    user_id: user.id,
+                    damage: dmg,
+                    reps_contributed: repCount,
+                    has_claimed_defeat_reward: false
+                });
+            }
+
+            const effortGold = repCount * 2;
+            const effortXp = repCount * 5;
+            user.gold += effortGold;
+            user.xp += effortXp;
+            user.total_reps += repCount;
+
+            return res.json({
+                success: true,
+                message: isDefeated ? `🎉 Tuyệt đỉnh! Bạn và bang hội đã kết liễu ${boss.boss_name}!` : `⚔️ Đã gây ${dmg} sát thương lên ${boss.boss_name}!`,
+                damageDealt: dmg,
+                reps: repCount,
+                bossRemainingHp: newHp,
+                isDefeated: isDefeated,
+                effortGold,
+                effortXp
+            });
+        }
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// 3. Nhận phần thưởng siêu hậu hĩnh khi Boss Thế Giới bị tiêu diệt
+app.post('/api/guild/boss/claim', async (req, res) => {
+    const { guildId, username } = req.body;
+
+    try {
+        if (!useFallback) {
+            const [users] = await pool.query('SELECT id FROM users WHERE username = ?', [username]);
+            if (users.length === 0) return res.status(404).json({ error: 'Không tìm thấy người chơi!' });
+            const user = users[0];
+
+            const [bosses] = await pool.query(
+                'SELECT * FROM guild_boss WHERE guild_id = ? AND status = "DEFEATED" ORDER BY id DESC LIMIT 1',
+                [guildId]
+            );
+            if (bosses.length === 0) return res.status(400).json({ error: 'Boss chưa bị tiêu diệt, hãy cùng bang hội tiếp tục chiến đấu!' });
+            const boss = bosses[0];
+
+            const [damageRows] = await pool.query(
+                'SELECT * FROM guild_boss_damage WHERE boss_db_id = ? AND user_id = ?',
+                [boss.id, user.id]
+            );
+            if (damageRows.length === 0) return res.status(400).json({ error: 'Bạn chưa góp sát thương cho chiến dịch diệt Boss này!' });
+            if (damageRows[0].has_claimed_defeat_reward) return res.status(400).json({ error: 'Bạn đã nhận phần thưởng cho lần diệt Boss này rồi!' });
+
+            // Trao thưởng Vàng & Kim Cương
+            await pool.query('UPDATE users SET gold = gold + ?, gems = gems + ? WHERE id = ?', [boss.reward_gold, boss.reward_gems, user.id]);
+
+            // Trao Trang Bị Huyền Thoại vào kho đồ
+            if (boss.reward_item_id) {
+                await pool.query('INSERT INTO user_inventory (user_id, item_id, is_equipped) VALUES (?, ?, FALSE)', [user.id, boss.reward_item_id]);
+            }
+
+            // Đánh dấu đã nhận thưởng
+            await pool.query('UPDATE guild_boss_damage SET has_claimed_defeat_reward = TRUE WHERE boss_db_id = ? AND user_id = ?', [boss.id, user.id]);
+
+            const [itemRows] = await pool.query('SELECT name, icon FROM items WHERE id = ?', [boss.reward_item_id]);
+            const itemName = itemRows.length > 0 ? itemRows[0].name : 'Vật Phẩm Huyền Thoại';
+            const itemIcon = itemRows.length > 0 ? itemRows[0].icon : '🎁';
+
+            return res.json({
+                success: true,
+                message: `🎉 Chúc mừng! Bạn nhận được ${boss.reward_gold} Vàng, ${boss.reward_gems} Kim Cương và ${itemIcon} ${itemName}!`,
+                rewardGold: boss.reward_gold,
+                rewardGems: boss.reward_gems,
+                rewardItemId: boss.reward_item_id,
+                rewardItemName: itemName
+            });
+        } else {
+            const user = memoryDB.users.find(u => u.username.toLowerCase() === username.toLowerCase());
+            if (!user) return res.status(404).json({ error: 'Không tìm thấy người chơi!' });
+
+            let boss = (memoryDB.guild_bosses || []).slice().reverse().find(b => b.guild_id == guildId && b.status === 'DEFEATED');
+            if (!boss) return res.status(400).json({ error: 'Boss chưa bị tiêu diệt, hãy cùng bang hội tiếp tục chiến đấu!' });
+
+            let record = (memoryDB.guild_boss_damage || []).find(d => d.boss_db_id === boss.id && d.user_id === user.id);
+            if (!record) return res.status(400).json({ error: 'Bạn chưa góp sát thương cho chiến dịch diệt Boss này!' });
+            if (record.has_claimed_defeat_reward) return res.status(400).json({ error: 'Bạn đã nhận phần thưởng rồi!' });
+
+            user.gold += boss.reward_gold;
+            user.gems += boss.reward_gems;
+            record.has_claimed_defeat_reward = true;
+
+            if (boss.reward_item_id) {
+                if (!memoryDB.inventory) memoryDB.inventory = [];
+                memoryDB.inventory.push({
+                    id: memoryDB.inventory.length + 1,
+                    user_id: user.id,
+                    item_id: boss.reward_item_id,
+                    is_equipped: 0
+                });
+            }
+
+            const item = (memoryDB.items || []).find(i => i.id === boss.reward_item_id);
+            const itemName = item ? item.name : 'Vật Phẩm Huyền Thoại';
+
+            return res.json({
+                success: true,
+                message: `🎉 Chúc mừng! Bạn nhận được ${boss.reward_gold} Vàng, ${boss.reward_gems} Kim Cương và ${itemName}!`,
+                rewardGold: boss.reward_gold,
+                rewardGems: boss.reward_gems,
+                rewardItemId: boss.reward_item_id,
+                rewardItemName: itemName
+            });
+        }
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// 4. Triệu hồi Boss Thế Giới mới sau khi boss cũ bị hạ gục
+app.post('/api/guild/boss/summon', async (req, res) => {
+    const { guildId, username } = req.body;
+    try {
+        // Chọn ngẫu nhiên hoặc xoay tua 1 Siêu Boss trong danh sách
+        const nextTemplate = WORLD_BOSS_TEMPLATES[Math.floor(Math.random() * WORLD_BOSS_TEMPLATES.length)];
+
+        if (!useFallback) {
+            const [ins] = await pool.query(
+                `INSERT INTO guild_boss (guild_id, boss_id, boss_name, boss_title, boss_avatar, max_hp, current_hp, status, reward_gold, reward_gems, reward_item_id)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, 'ACTIVE', ?, ?, ?)`,
+                [guildId, nextTemplate.bossId, nextTemplate.name, nextTemplate.title, nextTemplate.avatar, nextTemplate.maxHp, nextTemplate.maxHp, nextTemplate.rewardGold, nextTemplate.rewardGems, nextTemplate.rewardItemId]
+            );
+
+            return res.json({
+                success: true,
+                message: `🔥 Tiếng gầm thét rung chuyển! ${nextTemplate.name} đã giáng lâm khiêu chiến bang hội!`,
+                bossId: ins.insertId
+            });
+        } else {
+            const newBoss = {
+                id: (memoryDB.guild_bosses || []).length + 1,
+                guild_id: guildId,
+                boss_id: nextTemplate.bossId,
+                boss_name: nextTemplate.name,
+                boss_title: nextTemplate.title,
+                boss_avatar: nextTemplate.avatar,
+                max_hp: nextTemplate.maxHp,
+                current_hp: nextTemplate.maxHp,
+                status: 'ACTIVE',
+                reward_gold: nextTemplate.rewardGold,
+                reward_gems: nextTemplate.rewardGems,
+                reward_item_id: nextTemplate.rewardItemId
+            };
+            if (!memoryDB.guild_bosses) memoryDB.guild_bosses = [];
+            memoryDB.guild_bosses.push(newBoss);
+
+            return res.json({
+                success: true,
+                message: `🔥 Tiếng gầm thét rung chuyển! ${nextTemplate.name} đã giáng lâm khiêu chiến bang hội!`,
+                bossId: newBoss.id
+            });
+        }
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 
 // Khởi động server
 initDatabase().then(() => {

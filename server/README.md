@@ -40,3 +40,8 @@ Server sẽ tự động tạo cơ sở dữ liệu SQL SQLite `vigil_local.db` 
 - `POST /api/inventory/equip`: Trang bị vật phẩm vào slot tương ứng của Anh Hùng.
 - `POST /api/inventory/unequip`: Tháo trang bị ra khỏi slot.
 - `POST /api/workout/finish`: Kết thúc bài tập, tự động tính toán **Tỷ lệ rớt đồ (Drop Rate)** dựa trên chỉ số Vận May (LUCK) và độ khó của trận đấu/Boss, sau đó lưu kết quả và trao thưởng vật phẩm rớt ra.
+- `GET /api/guild/boss`: Lấy thông tin Siêu Trùm Thế Giới của bang hội, thanh máu HP và BXH góp sát thương của các thành viên.
+- `POST /api/guild/boss/attack`: Góp sát thương từ buổi tập vào thanh máu Boss Bang Hội, tự động nhận thưởng nỗ lực.
+- `POST /api/guild/boss/claim`: Nhận đại thưởng (Vàng, Kim Cương, Trang Bị Huyền Thoại Thần Thoại) khi Boss Bang Hội bị đánh bại.
+- `POST /api/guild/boss/summon`: Triệu hồi Siêu Trùm mới sau khi hạ gục Boss cũ.
+

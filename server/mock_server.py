@@ -95,15 +95,61 @@ def init_db():
         ('weapon_stick', 'Côn Gỗ Luyện Tập', 'WEAPON', 'COMMON', 50, 0, 4, 0, 2, 0, 'Khúc gỗ sồi chắc nịch.', '🪵'),
         ('weapon_sword', 'Thanh Kiếm Thép Đúc', 'WEAPON', 'RARE', 180, 0, 10, 0, 6, 0, 'Lưỡi kiếm sắc bén rèn từ lò luyện kim.', '⚔️'),
         ('weapon_axe', 'Rìu Chiến Berserker', 'WEAPON', 'EPIC', 460, 6, 22, 8, 0, 0, 'Chiếc rìu khổng lồ của chiến binh cuồng nộ.', '🪓'),
-        ('weapon_excalibur', 'Thánh Kiếm Excalibur', 'WEAPON', 'LEGENDARY', 1400, 30, 35, 0, 18, 15, 'Bảo kiếm huyền thoại rút từ trong đá.', '🗡️')
+        ('weapon_excalibur', 'Thánh Kiếm Excalibur', 'WEAPON', 'LEGENDARY', 1400, 30, 35, 0, 18, 15, 'Bảo kiếm huyền thoại rút từ trong đá.', '🗡️'),
+        ('weapon_dragon_slayer', 'Đại Đao Trảm Long', 'WEAPON', 'LEGENDARY', 3500, 80, 55, 10, 25, 20, 'Thần binh rèn từ vảy và răng Hắc Long.', '🗡️'),
+        ('armor_dragon_scale', 'Long Lân Thần Giáp', 'ARMOR', 'LEGENDARY', 3200, 75, 25, 45, 15, 20, 'Lớp vảy rồng kiên cố bảo vệ toàn thân.', '🐲'),
+        ('amulet_boss_heart', 'Trái Tim Hắc Long', 'AMULET', 'LEGENDARY', 4000, 100, 25, 25, 25, 35, 'Tinh hoa sinh mệnh Siêu Trùm Thế Giới.', '💎')
     ]
     c.executemany('INSERT OR IGNORE INTO items VALUES (?,?,?,?,?,?,?,?,?,?,?,?)', items_data)
+
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS guild_boss (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            guild_id INTEGER,
+            boss_id TEXT,
+            boss_name TEXT,
+            boss_title TEXT,
+            boss_avatar TEXT,
+            max_hp INTEGER,
+            current_hp INTEGER,
+            status TEXT DEFAULT 'ACTIVE',
+            reward_gold INTEGER,
+            reward_gems INTEGER,
+            reward_item_id TEXT,
+            created_at TEXT,
+            defeated_at TEXT
+        )
+    ''')
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS guild_boss_damage (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            guild_id INTEGER,
+            boss_db_id INTEGER,
+            user_id INTEGER,
+            damage INTEGER DEFAULT 0,
+            reps_contributed INTEGER DEFAULT 0,
+            has_claimed_defeat_reward INTEGER DEFAULT 0
+        )
+    ''')
+
+    # Seed default guild boss
+    c.execute('SELECT COUNT(*) FROM guild_boss')
+    if c.fetchone()[0] == 0:
+        c.execute('''
+            INSERT INTO guild_boss (id, guild_id, boss_id, boss_name, boss_title, boss_avatar, max_hp, current_hp, status, reward_gold, reward_gems, reward_item_id, created_at)
+            VALUES (1, 1, "boss_nether_dragon", "Hắc Long Viễn Cổ - Nidhogg", "SIÊU TRÙM THẾ GIỚI BANG HỘI", "🐉", 500000, 385000, "ACTIVE", 15000, 350, "weapon_dragon_slayer", datetime("now"))
+        ''')
+        c.execute('''
+            INSERT INTO guild_boss_damage (guild_id, boss_db_id, user_id, damage, reps_contributed, has_claimed_defeat_reward)
+            VALUES (1, 1, 2, 115000, 120, 0)
+        ''')
 
     c.execute('INSERT OR IGNORE INTO users (id, username, gold, gems, xp, level, streak, total_reps, stage) VALUES (1, "Hachimi", 200, 10, 0, 1, 0, 0, 1)')
     c.execute('INSERT OR IGNORE INTO user_inventory (id, user_id, item_id, is_equipped) VALUES (1, 1, "helm_bronze", 1)')
 
     conn.commit()
     conn.close()
+
 
 class RequestHandler(BaseHTTPRequestHandler):
     def _send_json(self, data, status=200):
@@ -190,9 +236,87 @@ class RequestHandler(BaseHTTPRequestHandler):
             ''', (user_dict['id'],))
             inventory = [dict(r) for r in c.fetchall()]
             self._send_json({'user': user_dict, 'inventory': inventory})
+        elif self.path.startswith('/api/guild/boss'):
+            from urllib.parse import urlparse, parse_qs
+            parsed = urlparse(self.path)
+            qs = parse_qs(parsed.query)
+            guild_id = int(qs.get('guildId', ['1'])[0])
+            username = qs.get('username', [''])[0]
+
+            c.execute('SELECT * FROM guild_boss WHERE guild_id = ? ORDER BY id DESC LIMIT 1', (guild_id,))
+            boss = c.fetchone()
+            if not boss:
+                c.execute('''
+                    INSERT INTO guild_boss (guild_id, boss_id, boss_name, boss_title, boss_avatar, max_hp, current_hp, status, reward_gold, reward_gems, reward_item_id, created_at)
+                    VALUES (?, "boss_nether_dragon", "Hắc Long Viễn Cổ - Nidhogg", "SIÊU TRÙM THẾ GIỚI BANG HỘI", "🐉", 500000, 500000, "ACTIVE", 15000, 350, "weapon_dragon_slayer", datetime("now"))
+                ''', (guild_id,))
+                conn.commit()
+                c.execute('SELECT * FROM guild_boss WHERE id = last_insert_rowid()')
+                boss = c.fetchone()
+
+            boss_dict = dict(boss)
+            c.execute('''
+                SELECT gbd.user_id, u.username, u.avatar, u.level, gbd.damage, gbd.reps_contributed, gbd.has_claimed_defeat_reward
+                FROM guild_boss_damage gbd
+                JOIN users u ON gbd.user_id = u.id
+                WHERE gbd.boss_db_id = ?
+                ORDER BY gbd.damage DESC
+            ''', (boss_dict['id'],))
+            rows = c.fetchall()
+            total_damage = sum(r['damage'] for r in rows)
+            contributors = []
+            my_contrib = {'damage': 0, 'reps': 0, 'percentage': 0, 'rank': 0, 'hasClaimedDefeatReward': False}
+            for idx, r in enumerate(rows):
+                p = round((r['damage'] / total_damage * 100), 1) if total_damage > 0 else 0
+                item = {
+                    'userId': r['user_id'],
+                    'username': r['username'],
+                    'avatar': r['avatar'] or '🧑‍🎤',
+                    'level': r['level'] or 1,
+                    'damage': r['damage'],
+                    'reps': r['reps_contributed'],
+                    'percentage': p,
+                    'rank': idx + 1,
+                    'hasClaimed': bool(r['has_claimed_defeat_reward'])
+                }
+                contributors.append(item)
+                if username and r['username'].lower() == username.lower():
+                    my_contrib = {
+                        'damage': item['damage'],
+                        'reps': item['reps'],
+                        'percentage': item['percentage'],
+                        'rank': item['rank'],
+                        'hasClaimedDefeatReward': item['hasClaimed']
+                    }
+
+            c.execute('SELECT name FROM items WHERE id = ?', (boss_dict['reward_item_id'],))
+            item_row = c.fetchone()
+            reward_item_name = item_row['name'] if item_row else 'Vật Phẩm Huyền Thoại'
+
+            self._send_json({
+                'success': True,
+                'boss': {
+                    'id': boss_dict['id'],
+                    'guildId': boss_dict['guild_id'],
+                    'bossId': boss_dict['boss_id'],
+                    'name': boss_dict['boss_name'],
+                    'title': boss_dict['boss_title'],
+                    'avatar': boss_dict['boss_avatar'],
+                    'maxHp': boss_dict['max_hp'],
+                    'currentHp': boss_dict['current_hp'],
+                    'status': boss_dict['status'],
+                    'rewardGold': boss_dict['reward_gold'],
+                    'rewardGems': boss_dict['reward_gems'],
+                    'rewardItemId': boss_dict['reward_item_id'],
+                    'rewardItemName': reward_item_name
+                },
+                'contributors': contributors,
+                'myContribution': my_contrib
+            })
         else:
             self._send_json({'error': 'Not found'}, 404)
         conn.close()
+
 
     def do_POST(self):
         length = int(self.headers.get('content-length', 0))
@@ -343,6 +467,117 @@ class RequestHandler(BaseHTTPRequestHandler):
                 'newXp': new_xp,
                 'newStreak': new_streak,
                 'droppedItem': dropped_item
+            })
+        elif self.path == '/api/guild/boss/attack':
+            guild_id = int(body.get('guildId', 1))
+            username = body.get('username', 'Hachimi')
+            damage = max(1, int(body.get('damage', 100)))
+            reps = max(1, int(body.get('reps', 1)))
+            exercise = body.get('exercise', 'SQUAT')
+
+            c.execute('SELECT * FROM users WHERE username = ?', (username,))
+            user = c.fetchone()
+            if not user:
+                self._send_json({'error': 'Không tìm thấy người chơi!'}, 404)
+                conn.close()
+                return
+
+            c.execute('SELECT * FROM guild_boss WHERE guild_id = ? AND status = "ACTIVE" ORDER BY id DESC LIMIT 1', (guild_id,))
+            boss = c.fetchone()
+            if not boss:
+                self._send_json({'error': 'Boss đã bị tiêu diệt hoặc chưa được triệu hồi!'}, 400)
+                conn.close()
+                return
+
+            new_hp = max(0, boss['current_hp'] - damage)
+            is_def = (new_hp == 0)
+            c.execute('UPDATE guild_boss SET current_hp = ?, status = ?, defeated_at = ? WHERE id = ?',
+                      (new_hp, 'DEFEATED' if is_def else 'ACTIVE', datetime.now().isoformat() if is_def else None, boss['id']))
+
+            c.execute('SELECT * FROM guild_boss_damage WHERE boss_db_id = ? AND user_id = ?', (boss['id'], user['id']))
+            dmg_record = c.fetchone()
+            if dmg_record:
+                c.execute('UPDATE guild_boss_damage SET damage = damage + ?, reps_contributed = reps_contributed + ? WHERE id = ?',
+                          (damage, reps, dmg_record['id']))
+            else:
+                c.execute('INSERT INTO guild_boss_damage (guild_id, boss_db_id, user_id, damage, reps_contributed) VALUES (?, ?, ?, ?, ?)',
+                          (guild_id, boss['id'], user['id'], damage, reps))
+
+            effort_gold = reps * 2
+            effort_xp = reps * 5
+            c.execute('UPDATE users SET gold = gold + ?, xp = xp + ?, total_reps = total_reps + ? WHERE id = ?',
+                      (effort_gold, effort_xp, reps, user['id']))
+            conn.commit()
+
+            self._send_json({
+                'success': True,
+                'message': f"🎉 Tuyệt đỉnh! Bạn và bang hội đã kết liễu {boss['boss_name']}!" if is_def else f"⚔️ Đã gây {damage} sát thương lên {boss['boss_name']}!",
+                'damageDealt': damage,
+                'reps': reps,
+                'bossRemainingHp': new_hp,
+                'isDefeated': is_def,
+                'effortGold': effort_gold,
+                'effortXp': effort_xp
+            })
+        elif self.path == '/api/guild/boss/claim':
+            guild_id = int(body.get('guildId', 1))
+            username = body.get('username', 'Hachimi')
+            c.execute('SELECT * FROM users WHERE username = ?', (username,))
+            user = c.fetchone()
+            c.execute('SELECT * FROM guild_boss WHERE guild_id = ? AND status = "DEFEATED" ORDER BY id DESC LIMIT 1', (guild_id,))
+            boss = c.fetchone()
+            if not boss or not user:
+                self._send_json({'error': 'Boss chưa bị tiêu diệt hoặc không tìm thấy người chơi!'}, 400)
+                conn.close()
+                return
+
+            c.execute('SELECT * FROM guild_boss_damage WHERE boss_db_id = ? AND user_id = ?', (boss['id'], user['id']))
+            dmg_row = c.fetchone()
+            if not dmg_row:
+                self._send_json({'error': 'Bạn chưa tham gia đánh boss!'}, 400)
+                conn.close()
+                return
+            if dmg_row['has_claimed_defeat_reward']:
+                self._send_json({'error': 'Đã nhận thưởng rồi!'}, 400)
+                conn.close()
+                return
+
+            c.execute('UPDATE users SET gold = gold + ?, gems = gems + ? WHERE id = ?',
+                      (boss['reward_gold'], boss['reward_gems'], user['id']))
+            c.execute('UPDATE guild_boss_damage SET has_claimed_defeat_reward = 1 WHERE id = ?', (dmg_row['id'],))
+            if boss['reward_item_id']:
+                c.execute('INSERT INTO user_inventory (user_id, item_id, is_equipped, acquired_at) VALUES (?, ?, 0, ?)',
+                          (user['id'], boss['reward_item_id'], datetime.now().isoformat()))
+            conn.commit()
+
+            c.execute('SELECT name FROM items WHERE id = ?', (boss['reward_item_id'],))
+            item_row = c.fetchone()
+            item_name = item_row['name'] if item_row else 'Vật Phẩm Huyền Thoại'
+
+            self._send_json({
+                'success': True,
+                'message': f"🎉 Nhận thành công {boss['reward_gold']} Vàng, {boss['reward_gems']} Kim Cương và {item_name}!",
+                'rewardGold': boss['reward_gold'],
+                'rewardGems': boss['reward_gems'],
+                'rewardItemId': boss['reward_item_id'],
+                'rewardItemName': item_name
+            })
+        elif self.path == '/api/guild/boss/summon':
+            guild_id = int(body.get('guildId', 1))
+            templates = [
+                ('boss_nether_dragon', 'Hắc Long Viễn Cổ - Nidhogg', 'SIÊU TRÙM THẾ GIỚI BANG HỘI', '🐉', 500000, 15000, 350, 'weapon_dragon_slayer'),
+                ('boss_inferno_titan', 'Cự Nhân Hỏa Ngục - Surtr', 'SIÊU TRÙM THẾ GIỚI BANG HỘI', '🌋', 650000, 18000, 400, 'armor_dragon_scale'),
+                ('boss_void_behemoth', 'Thần Thú Hư Không - Leviathan', 'SIÊU TRÙM THẾ GIỚI BANG HỘI', '🐲', 800000, 22000, 500, 'amulet_boss_heart')
+            ]
+            tpl = random.choice(templates)
+            c.execute('''
+                INSERT INTO guild_boss (guild_id, boss_id, boss_name, boss_title, boss_avatar, max_hp, current_hp, status, reward_gold, reward_gems, reward_item_id, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'ACTIVE', ?, ?, ?, datetime("now"))
+            ''', (guild_id, tpl[0], tpl[1], tpl[2], tpl[3], tpl[4], tpl[4], tpl[5], tpl[6], tpl[7]))
+            conn.commit()
+            self._send_json({
+                'success': True,
+                'message': f"🔥 Tiếng gầm thét rung chuyển! {tpl[1]} đã giáng lâm khiêu chiến bang hội!"
             })
         else:
             self._send_json({'error': 'Not found'}, 404)

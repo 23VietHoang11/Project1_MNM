@@ -143,8 +143,14 @@ INSERT INTO items (id, name, slot, rarity, price_gold, price_gems, bonus_str, bo
 ('weapon_stick', 'Côn Gỗ Luyện Tập', 'WEAPON', 'COMMON', 50, 0, 4, 0, 2, 0, 'Khúc gỗ sồi chắc nịch dùng để rèn luyện cổ tay.', '🪵'),
 ('weapon_sword', 'Thanh Kiếm Thép Đúc', 'WEAPON', 'RARE', 180, 0, 10, 0, 6, 0, 'Lưỡi kiếm sắc bén rèn từ lò luyện kim hoàng gia.', '⚔️'),
 ('weapon_axe', 'Rìu Chiến Berserker', 'WEAPON', 'EPIC', 460, 6, 22, 8, 0, 0, 'Chiếc rìu khổng lồ dành riêng cho những chiến binh cuồng nộ.', '🪓'),
-('weapon_excalibur', 'Thánh Kiếm Excalibur', 'WEAPON', 'LEGENDARY', 1400, 30, 35, 0, 18, 15, 'Bảo kiếm huyền thoại cắm sâu trong đá, chỉ người xứng đáng mới rút được.', '🗡️')
+('weapon_excalibur', 'Thánh Kiếm Excalibur', 'WEAPON', 'LEGENDARY', 1400, 30, 35, 0, 18, 15, 'Bảo kiếm huyền thoại cắm sâu trong đá, chỉ người xứng đáng mới rút được.', '🗡️'),
+
+-- PHẦN THƯỞNG ĐẶC BIỆT TỪ BOSS THẾ GIỚI BANG HỘI (GUILD WORLD BOSS EXCLUSIVE REWARDS)
+('weapon_dragon_slayer', 'Đại Đao Trảm Long', 'WEAPON', 'LEGENDARY', 3500, 80, 55, 10, 25, 20, 'Thần binh rèn từ vảy và răng của Hắc Long, uy lực hủy thiên diệt địa.', '🗡️'),
+('armor_dragon_scale', 'Long Lân Thần Giáp', 'ARMOR', 'LEGENDARY', 3200, 75, 25, 45, 15, 20, 'Lớp vảy rồng kiên cố bất khả xâm phạm bảo vệ toàn thân chiến binh.', '🐲'),
+('amulet_boss_heart', 'Trái Tim Hắc Long', 'AMULET', 'LEGENDARY', 4000, 100, 25, 25, 25, 35, 'Tinh hoa sinh mệnh của Siêu Trùm Thế Giới ban phước lành vĩnh cửu.', '💎')
 ON DUPLICATE KEY UPDATE name=VALUES(name), price_gold=VALUES(price_gold), bonus_str=VALUES(bonus_str);
+
 
 -- SEED MẪU NHIỆM VỤ
 INSERT INTO challenges (id, name, category, quote, goal, reward_xp, reward_gold, reward_gems) VALUES
@@ -173,3 +179,122 @@ WHERE NOT EXISTS (SELECT 1 FROM user_inventory WHERE user_id = 1 AND item_id = '
 
 -- KẾT BẠN MẪU GIỮA HACHIMI VÀ SHADOWBLADE
 INSERT IGNORE INTO friends (user_id, friend_id) VALUES (1, 2), (2, 1);
+
+-- 8. Bảng lời mời kết bạn (Friend Requests)
+CREATE TABLE IF NOT EXISTS friend_requests (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    sender_id INT NOT NULL,
+    receiver_id INT NOT NULL,
+    status ENUM('PENDING', 'ACCEPTED', 'DECLINED') DEFAULT 'PENDING',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (receiver_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE KEY uk_sender_receiver (sender_id, receiver_id)
+) ENGINE=InnoDB;
+
+-- 9. Bảng bang hội (Guilds)
+CREATE TABLE IF NOT EXISTS guilds (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(100) UNIQUE NOT NULL,
+    badge VARCHAR(20) DEFAULT '🛡️',
+    slogan VARCHAR(255) NOT NULL,
+    leader_id INT NOT NULL,
+    level INT DEFAULT 1,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (leader_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- 10. Bảng thành viên bang hội (Guild Members)
+CREATE TABLE IF NOT EXISTS guild_members (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    guild_id INT NOT NULL,
+    user_id INT UNIQUE NOT NULL,
+    role ENUM('LEADER', 'MEMBER') DEFAULT 'MEMBER',
+    joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (guild_id) REFERENCES guilds(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- 11. Bảng lời mời gia nhập bang hội (Guild Invitations)
+CREATE TABLE IF NOT EXISTS guild_invitations (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    guild_id INT NOT NULL,
+    inviter_id INT NOT NULL,
+    invitee_id INT NOT NULL,
+    status ENUM('PENDING', 'ACCEPTED', 'DECLINED') DEFAULT 'PENDING',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (guild_id) REFERENCES guilds(id) ON DELETE CASCADE,
+    FOREIGN KEY (inviter_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (invitee_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE KEY uk_guild_invitee (guild_id, invitee_id, status)
+) ENGINE=InnoDB;
+
+-- SEED MẪU BANG HỘI
+INSERT INTO guilds (id, name, badge, slogan, leader_id, level) VALUES
+(1, 'Taiwan Fitness 🇹🇼', '🇹🇼', 'Pushing for improvement every single rep!', 2, 2),
+(2, 'Chiến Binh Rồng 🐉', '🐉', 'Ý chí rèn luyện tựa long thần!', 5, 3),
+(3, 'Titan Thép 🗿', '🗿', 'Cơ bắp vững chắc như bàn thạch.', 4, 4)
+ON DUPLICATE KEY UPDATE name=VALUES(name);
+
+INSERT INTO guild_members (guild_id, user_id, role) VALUES
+(1, 2, 'LEADER'),
+(2, 5, 'LEADER'),
+(3, 4, 'LEADER')
+ON DUPLICATE KEY UPDATE role=VALUES(role);
+
+-- SEED LỜI MỜI MẪU
+INSERT IGNORE INTO friend_requests (sender_id, receiver_id, status) VALUES (3, 1, 'PENDING');
+INSERT IGNORE INTO guild_invitations (guild_id, inviter_id, invitee_id, status) VALUES (2, 5, 1, 'PENDING');
+
+-- ====================================================================
+-- 12. BOSS THẾ GIỚI BANG HỘI (GUILD WORLD BOSS RAID)
+-- ====================================================================
+
+-- Bảng lưu trữ Boss Thế Giới của từng bang hội
+CREATE TABLE IF NOT EXISTS guild_boss (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    guild_id INT NOT NULL,
+    boss_id VARCHAR(50) NOT NULL DEFAULT 'boss_nether_dragon',
+    boss_name VARCHAR(100) NOT NULL DEFAULT 'Hắc Long Viễn Cổ - Nidhogg',
+    boss_title VARCHAR(100) NOT NULL DEFAULT 'SIÊU TRÙM THẾ GIỚI BANG HỘI',
+    boss_avatar VARCHAR(20) NOT NULL DEFAULT '🐉',
+    max_hp INT NOT NULL DEFAULT 500000,
+    current_hp INT NOT NULL DEFAULT 500000,
+    status ENUM('ACTIVE', 'DEFEATED') DEFAULT 'ACTIVE',
+    reward_gold INT NOT NULL DEFAULT 15000,
+    reward_gems INT NOT NULL DEFAULT 350,
+    reward_item_id VARCHAR(50) DEFAULT 'weapon_dragon_slayer',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    defeated_at TIMESTAMP NULL DEFAULT NULL,
+    FOREIGN KEY (guild_id) REFERENCES guilds(id) ON DELETE CASCADE,
+    INDEX idx_guild_status (guild_id, status)
+) ENGINE=InnoDB;
+
+-- Bảng đóng góp sát thương của từng thành viên trong Bang
+CREATE TABLE IF NOT EXISTS guild_boss_damage (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    guild_id INT NOT NULL,
+    boss_db_id INT NOT NULL,
+    user_id INT NOT NULL,
+    damage INT NOT NULL DEFAULT 0,
+    reps_contributed INT NOT NULL DEFAULT 0,
+    last_attack_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    has_claimed_defeat_reward BOOLEAN NOT NULL DEFAULT FALSE,
+    FOREIGN KEY (guild_id) REFERENCES guilds(id) ON DELETE CASCADE,
+    FOREIGN KEY (boss_db_id) REFERENCES guild_boss(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE KEY uk_boss_user (boss_db_id, user_id)
+) ENGINE=InnoDB;
+
+-- SEED MẪU BOSS CHO CÁC BANG HỘI
+INSERT INTO guild_boss (id, guild_id, boss_id, boss_name, boss_title, boss_avatar, max_hp, current_hp, status, reward_gold, reward_gems, reward_item_id) VALUES
+(1, 1, 'boss_nether_dragon', 'Hắc Long Viễn Cổ - Nidhogg', 'SIÊU TRÙM THẾ GIỚI BANG HỘI', '🐉', 500000, 385000, 'ACTIVE', 15000, 350, 'weapon_dragon_slayer'),
+(2, 2, 'boss_inferno_titan', 'Cự Nhân Hỏa Ngục - Surtr', 'SIÊU TRÙM THẾ GIỚI BANG HỘI', '🌋', 600000, 490000, 'ACTIVE', 18000, 400, 'armor_dragon_scale'),
+(3, 3, 'boss_void_behemoth', 'Thần Thú Hư Không - Leviathan', 'SIÊU TRÙM THẾ GIỚI BANG HỘI', '🐲', 750000, 750000, 'ACTIVE', 22000, 500, 'amulet_boss_heart')
+ON DUPLICATE KEY UPDATE boss_name=VALUES(boss_name), max_hp=VALUES(max_hp);
+
+-- SEED SÁT THƯƠNG ĐÓNG GÓP MẪU TỪ CÁC THÀNH VIÊN
+INSERT INTO guild_boss_damage (guild_id, boss_db_id, user_id, damage, reps_contributed, has_claimed_defeat_reward) VALUES
+(1, 1, 2, 115000, 120, FALSE)
+ON DUPLICATE KEY UPDATE damage=VALUES(damage);
+
