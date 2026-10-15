@@ -1,0 +1,956 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vigil Admin Console - Hệ Thống Quản Trị Trò Chơi Hóa Thể Thao AI</title>
+  
+  <!-- Google Fonts: Outfit & Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700;800;900&display=swap" rel="stylesheet">
+  
+  <!-- Chart.js for Rich Analytics & DAU Charts -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  
+  <link rel="stylesheet" href="css/admin.css">
+</head>
+<body>
+  <div class="admin-layout">
+    
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <div class="brand-icon">🛡️</div>
+        <div class="brand-text">
+          <h2>VIGIL ADMIN</h2>
+          <span class="brand-badge">CHƯƠNG 2 • FR8 & UC08</span>
+        </div>
+      </div>
+      
+      <div class="sidebar-nav">
+        <div class="nav-section-title">Trung Tâm Điều Hành</div>
+        
+        <div class="nav-item active" data-view="dashboard">
+          <span class="nav-icon">📊</span>
+          <span>Tổng Quan & Báo Cáo</span>
+        </div>
+        
+        <div class="nav-item" data-view="users">
+          <span class="nav-icon">👥</span>
+          <span>Quản Lý Người Chơi</span>
+          <span class="nav-badge" id="badgeTotalUsers">--</span>
+        </div>
+        
+        <div class="nav-section-title">Quản Trị Nội Dung (Zero-Hardcoding)</div>
+        
+        <div class="nav-item" data-view="monsters">
+          <span class="nav-icon">🐉</span>
+          <span>Cấu Hình Quái Vật & Trùm</span>
+        </div>
+        
+        <div class="nav-item" data-view="items">
+          <span class="nav-icon">⚔️</span>
+          <span>Cửa Hàng & Vật Phẩm</span>
+        </div>
+        
+        <div class="nav-item" data-view="exercises">
+          <span class="nav-icon">📐</span>
+          <span>Cấu Hình Bài Tập AI</span>
+        </div>
+        
+        <div class="nav-section-title">Bảo Mật & An Ninh</div>
+        
+        <div class="nav-item" data-view="anticheat">
+          <span class="nav-icon">🚨</span>
+          <span>Cảnh Báo Gian Lận</span>
+          <span class="nav-badge" style="background:#EF4444;" id="badgeCheatAlerts">0</span>
+        </div>
+        
+        <div class="nav-item" data-view="audit">
+          <span class="nav-icon">📜</span>
+          <span>Nhật Ký Kiểm Toán (Audit)</span>
+        </div>
+
+        <div class="nav-item" data-view="database">
+          <span class="nav-icon">⚙️</span>
+          <span>Trạng Thái Hệ Thống</span>
+        </div>
+      </div>
+      
+      <div class="sidebar-footer">
+        <div class="admin-profile-card">
+          <div class="admin-avatar" id="sidebarAdminAvatar">🦊</div>
+          <div class="admin-info">
+            <h4 id="sidebarAdminName">Hachimi</h4>
+            <span id="sidebarAdminRole">ROLE_ADMIN TỐI CAO</span>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content Wrapper -->
+    <div class="main-wrapper">
+      
+      <!-- Topbar Header -->
+      <header class="topbar">
+        <div class="topbar-left">
+          <div class="page-title">
+            <h1 id="topbarTitle">Tổng Quan Hệ Thống</h1>
+            <p id="topbarSubtitle">Giám sát hoạt động rèn luyện, số rep AI và vận hành kinh tế game</p>
+          </div>
+        </div>
+        
+        <div class="topbar-right">
+          <div class="server-status-pill">
+            <span class="indicator"></span>
+            <span id="serverStatusText">KẾT NỐI MÁY CHỦ SẴN SÀNG</span>
+          </div>
+          
+          <button class="topbar-btn" id="btnRefreshData" title="Làm mới dữ liệu">
+            🔄
+          </button>
+          
+          <button class="topbar-btn" id="btnQuickAlerts" title="Cảnh báo an ninh">
+            🔔
+            <span class="dot-alert" id="dotAlertIndicator" style="display:none;"></span>
+          </button>
+
+          <button class="btn btn-outline btn-sm" id="btnAdminLogout" style="color:#F87171; border-color:rgba(239,68,68,0.4);" onclick="app.logoutAdmin()" title="Đăng xuất khỏi Admin Console">
+            🚪 Đăng Xuất
+          </button>
+        </div>
+      </header>
+
+      <!-- Scrollable Main View Container -->
+      <main class="content-scroll">
+        
+        <!-- ============================================================= -->
+        <!-- VIEW 1: DASHBOARD & ANALYTICS (FR8.3) -->
+        <!-- ============================================================= -->
+        <section id="view-dashboard" class="view-section active">
+          
+          <!-- Metric KPI Cards -->
+          <div class="metrics-grid">
+            <div class="metric-card cyan">
+              <div class="metric-top">
+                <span class="metric-label">Tổng Người Chơi</span>
+                <div class="metric-icon-box">👥</div>
+              </div>
+              <div class="metric-value" id="kpiTotalUsers">0</div>
+              <div class="metric-trend trend-up">
+                <span>↗ +12%</span> tuần này
+              </div>
+            </div>
+
+            <div class="metric-card emerald">
+              <div class="metric-top">
+                <span class="metric-label">Hoạt Động Hôm Nay (DAU)</span>
+                <div class="metric-icon-box">⚡</div>
+              </div>
+              <div class="metric-value" id="kpiActiveUsers">0</div>
+              <div class="metric-trend trend-up">
+                <span>● Đang tập luyện</span> tích cực
+              </div>
+            </div>
+
+            <div class="metric-card pink">
+              <div class="metric-top">
+                <span class="metric-label">Tổng Reps Hợp Lệ</span>
+                <div class="metric-icon-box">🔥</div>
+              </div>
+              <div class="metric-value" id="kpiTotalReps">0</div>
+              <div class="metric-trend trend-up">
+                <span>🎯 MediaPipe Pose</span> On-device
+              </div>
+            </div>
+
+            <div class="metric-card gold">
+              <div class="metric-top">
+                <span class="metric-label">Năng Lượng Đốt Cháy</span>
+                <div class="metric-icon-box">🥪</div>
+              </div>
+              <div class="metric-value" id="kpiTotalCalories">0 kcal</div>
+              <div class="metric-trend trend-up">
+                <span>🏆 Tỷ lệ thắng 89.4%</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Charts Row -->
+          <div class="charts-grid">
+            <div class="card">
+              <div class="chart-header">
+                <h3>📈 Tăng Trưởng Khối Lượng Vận Động (Reps & Buổi Tập)</h3>
+                <div class="chart-actions">
+                  <button class="chart-btn active" data-period="7d">7 Ngày</button>
+                  <button class="chart-btn" data-period="30d">30 Ngày</button>
+                </div>
+              </div>
+              <div class="chart-wrapper">
+                <canvas id="chartActivity"></canvas>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="chart-header">
+                <h3>🍕 Phân Bổ Bài Tập AI</h3>
+              </div>
+              <div class="chart-wrapper">
+                <canvas id="chartExercises"></canvas>
+              </div>
+            </div>
+          </div>
+
+          <!-- Anti-Cheat Quick Insight & Recent Workouts -->
+          <div class="charts-grid" style="grid-template-columns: 1fr 1fr;">
+            <div class="card">
+              <div class="chart-header">
+                <h3>🚨 Giám Sát Gian Lận Tức Thời (NFR1 & NFR4)</h3>
+                <button class="btn btn-outline btn-sm" onclick="app.switchView('anticheat')">Xem tất cả</button>
+              </div>
+              <div id="dashboardCheatWidget">
+                <div style="color:var(--text-secondary); text-align:center; padding:30px 0;">Đang kiểm tra dữ liệu rep...</div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="chart-header">
+                <h3>⚔️ Buổi Tập & Đánh Quái Gần Nhất</h3>
+                <button class="btn btn-outline btn-sm" onclick="app.refreshData()">Làm mới</button>
+              </div>
+              <div id="dashboardRecentWorkouts">
+                <div style="color:var(--text-secondary); text-align:center; padding:30px 0;">Đang tải danh sách...</div>
+              </div>
+            </div>
+          </div>
+
+        </section>
+
+        <!-- ============================================================= -->
+        <!-- VIEW 2: QUẢN LÝ NGƯỜI CHƠI (FR8.1 & UC08.1) -->
+        <!-- ============================================================= -->
+        <section id="view-users" class="view-section">
+          <div class="card">
+            <div class="toolbar">
+              <div class="toolbar-left">
+                <div class="global-search" style="width:280px;">
+                  <span class="search-icon">🔍</span>
+                  <input type="text" id="inputSearchUser" placeholder="Tìm tên, email, SĐT...">
+                </div>
+                
+                <select id="selectUserRoleFilter" class="filter-select">
+                  <option value="ALL">Tất Cả Vai Trò</option>
+                  <option value="User">Người Chơi (User)</option>
+                  <option value="Admin">Quản Trị Viên (Admin)</option>
+                </select>
+
+                <select id="selectUserStatusFilter" class="filter-select">
+                  <option value="ALL">Tất Cả Trạng Thái</option>
+                  <option value="1">Đang Hoạt Động (Active)</option>
+                  <option value="0">Bị Khóa (Locked)</option>
+                </select>
+              </div>
+
+              <div class="toolbar-right">
+                <button class="btn btn-primary" onclick="app.openAddUserModal()">
+                  ➕ Thêm Người Chơi
+                </button>
+              </div>
+            </div>
+
+            <div class="table-container">
+              <table class="admin-table">
+                <thead>
+                  <tr>
+                    <th>Người Chơi</th>
+                    <th>Cấp Độ & EXP</th>
+                    <th>Tài Sản (Vàng / Ngọc)</th>
+                    <th>Tổng Reps</th>
+                    <th>Chuỗi (Streak)</th>
+                    <th>Vai Trò</th>
+                    <th>Trạng Thái</th>
+                    <th style="text-align:right;">Thao Tác</th>
+                  </tr>
+                </thead>
+                <tbody id="tableUsersBody">
+                  <tr><td colspan="8" style="text-align:center; padding:30px;">Đang nạp danh sách tài khoản...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============================================================= -->
+        <!-- VIEW 3: CẤU HÌNH QUÁI VẬT & BOSS (FR8.2 & ZERO-HARDCODING) -->
+        <!-- ============================================================= -->
+        <section id="view-monsters" class="view-section">
+          <div class="card">
+            <div class="toolbar">
+              <div class="toolbar-left">
+                <div class="global-search" style="width:260px;">
+                  <span class="search-icon">🔍</span>
+                  <input type="text" id="inputSearchMonster" placeholder="Tìm tên quái, danh hiệu...">
+                </div>
+                
+                <select id="selectMonsterChapterFilter" class="filter-select">
+                  <option value="ALL">Tất Cả Chương (Chương 1 - 4)</option>
+                  <option value="1">Chương 1: Đồng Cỏ Ngập Nắng</option>
+                  <option value="2">Chương 2: Rừng Già Hắc Ám</option>
+                  <option value="3">Chương 3: Hẻm Núi Nham Thạch</option>
+                  <option value="4">Chương 4: Tháp Băng Vực Thẳm</option>
+                </select>
+
+                <select id="selectMonsterTypeFilter" class="filter-select">
+                  <option value="ALL">Tất Cả Loại Quái</option>
+                  <option value="NORMAL">Quái Thường</option>
+                  <option value="BOSS">Trùm (Boss)</option>
+                </select>
+              </div>
+
+              <div class="toolbar-right">
+                <button class="btn btn-primary" onclick="app.openAddMonsterModal()">
+                  ➕ Thêm Quái Mới (Zero-Hardcode)
+                </button>
+              </div>
+            </div>
+
+            <div class="table-container">
+              <table class="admin-table">
+                <thead>
+                  <tr>
+                    <th>Quái Vật & Avatar</th>
+                    <th>Chương</th>
+                    <th>Máu Tối Đa (HP)</th>
+                    <th>Bài Tập Khắc Chế</th>
+                    <th>Phần Thưởng EXP</th>
+                    <th>Phần Thưởng Vàng</th>
+                    <th>Phẩm Cấp Rớt Đồ</th>
+                    <th>Phân Loại</th>
+                    <th style="text-align:right;">Thao Tác</th>
+                  </tr>
+                </thead>
+                <tbody id="tableMonstersBody">
+                  <tr><td colspan="9" style="text-align:center; padding:30px;">Đang tải danh mục quái vật...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============================================================= -->
+        <!-- VIEW 4: CỬA HÀNG & VẬT PHẨM (FR8.2) -->
+        <!-- ============================================================= -->
+        <section id="view-items" class="view-section">
+          <div class="card">
+            <div class="toolbar">
+              <div class="toolbar-left">
+                <div class="global-search" style="width:260px;">
+                  <span class="search-icon">🔍</span>
+                  <input type="text" id="inputSearchItem" placeholder="Tìm vật phẩm...">
+                </div>
+
+                <select id="selectItemSlotFilter" class="filter-select">
+                  <option value="ALL">Tất Cả Vị Trí (Slot)</option>
+                  <option value="WEAPON">Vũ Khí (Weapon)</option>
+                  <option value="HELMET">Mũ Giáp (Helmet)</option>
+                  <option value="ARMOR">Áo Giáp (Armor)</option>
+                  <option value="GLOVES">Găng Tay (Gloves)</option>
+                  <option value="BOOTS">Giày (Boots)</option>
+                  <option value="AMULET">Bùa Chú (Amulet)</option>
+                </select>
+
+                <select id="selectItemRarityFilter" class="filter-select">
+                  <option value="ALL">Tất Cả Phẩm Cấp</option>
+                  <option value="COMMON">COMMON (Phổ Thông)</option>
+                  <option value="UNCOMMON">UNCOMMON (Khá)</option>
+                  <option value="RARE">RARE (Hiếm)</option>
+                  <option value="EPIC">EPIC (Sử Thi)</option>
+                  <option value="LEGENDARY">LEGENDARY (Huyền Thoại)</option>
+                  <option value="MYTHIC">MYTHIC (Thần Thoại)</option>
+                  <option value="ANCIENT">ANCIENT (Cổ Đại)</option>
+                  <option value="DIVINE">DIVINE (Thần Cấp)</option>
+                </select>
+              </div>
+
+              <div class="toolbar-right">
+                <button class="btn btn-primary" onclick="app.openAddItemModal()">
+                  ➕ Thêm Vật Phẩm Mới
+                </button>
+              </div>
+            </div>
+
+            <div class="table-container">
+              <table class="admin-table">
+                <thead>
+                  <tr>
+                    <th>Vật Phẩm</th>
+                    <th>Vị Trí (Slot)</th>
+                    <th>Độ Hiếm (Rarity)</th>
+                    <th>Giá Bán (Vàng/Ngọc)</th>
+                    <th>Chỉ Số Cường Hóa (STR/END/PRE/LUCK)</th>
+                    <th>Mô Tả Trang Bị</th>
+                    <th style="text-align:right;">Thao Tác</th>
+                  </tr>
+                </thead>
+                <tbody id="tableItemsBody">
+                  <tr><td colspan="7" style="text-align:center; padding:30px;">Đang tải danh mục vật phẩm...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============================================================= -->
+        <!-- VIEW 5: CẤU HÌNH BÀI TẬP AI (FR8.2: THRESHOLD & ZERO-HARDCODING) -->
+        <!-- ============================================================= -->
+        <section id="view-exercises" class="view-section">
+          <div class="card">
+            <div class="toolbar">
+              <div class="toolbar-left">
+                <h3 style="font-size:16px; font-weight:700;">📐 Quy Chuẩn Kỹ Thuật & Ngưỡng Góc Khớp (AI Pose Estimation)</h3>
+              </div>
+              <div class="toolbar-right">
+                <span class="badge badge-active">MediaPipe Pose Landmarker • 33 Khớp</span>
+              </div>
+            </div>
+            
+            <p style="color:var(--text-secondary); font-size:13px; margin-bottom:20px;">
+              Quản trị viên có thể tinh chỉnh góc gập (contract) và góc duỗi (extend) cho từng động tác. Client Android sẽ lập tức nhận cấu hình mới từ cơ sở dữ liệu để đếm rep chính xác mà không cần biên dịch lại mã nguồn ứng dụng di động.
+            </p>
+
+            <div class="table-container">
+              <table class="admin-table">
+                <thead>
+                  <tr>
+                    <th>Bài Tập Thể Lực</th>
+                    <th>Nhóm Cơ Tác Động</th>
+                    <th>Góc Chuẩn Bị (Duỗi)</th>
+                    <th>Góc Hoàn Thành (Gập)</th>
+                    <th>Hệ Số Sát Thương/Rep</th>
+                    <th>Calo Tiêu Hao/Rep</th>
+                    <th>Hướng Dẫn Kỹ Thuật</th>
+                    <th style="text-align:right;">Thao Tác</th>
+                  </tr>
+                </thead>
+                <tbody id="tableExercisesBody">
+                  <tr><td colspan="8" style="text-align:center; padding:30px;">Đang tải danh sách bài tập...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============================================================= -->
+        <!-- VIEW 6: CẢNH BÁO GIAN LẬN & ANTI-CHEAT (NFR1, NFR4) -->
+        <!-- ============================================================= -->
+        <section id="view-anticheat" class="view-section">
+          <div class="card">
+            <div class="toolbar">
+              <div class="toolbar-left">
+                <h3 style="font-size:16px; font-weight:700;">🚨 Phát Hiện & Cảnh Báo Gian Lận Số Rep (Anti-Cheat Engine)</h3>
+              </div>
+              <div class="toolbar-right">
+                <button class="btn btn-outline btn-sm" onclick="app.refreshAntiCheat()">Quét Lại Dữ Liệu</button>
+              </div>
+            </div>
+
+            <p style="color:var(--text-secondary); font-size:13px; margin-bottom:20px;">
+              Hệ thống tự động phát hiện các bất thường: Tốc độ rep siêu phàm (&lt; 200ms/rep theo tiêu chuẩn NFR1), số rep đột biến trong thời gian ngắn hoặc bất đồng bộ cảm biến gia tốc để cảnh báo quản trị viên xử lý ngay.
+            </p>
+
+            <div class="table-container">
+              <table class="admin-table">
+                <thead>
+                  <tr>
+                    <th>Mã Phiên</th>
+                    <th>Người Chơi</th>
+                    <th>Bài Tập</th>
+                    <th>Số Reps</th>
+                    <th>Thời Gian (s)</th>
+                    <th>Dấu Hiệu Bất Thường</th>
+                    <th>Mức Độ</th>
+                    <th>Thời Điểm</th>
+                    <th style="text-align:right;">Hành Động Khẩn Cấp</th>
+                  </tr>
+                </thead>
+                <tbody id="tableAntiCheatBody">
+                  <tr><td colspan="9" style="text-align:center; padding:30px;">Không có cảnh báo gian lận nào chưa xử lý!</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============================================================= -->
+        <!-- VIEW 7: NHẬT KÝ KIỂM TOÁN (AUDIT LOGS) -->
+        <!-- ============================================================= -->
+        <section id="view-audit" class="view-section">
+          <div class="card">
+            <div class="toolbar">
+              <div class="toolbar-left">
+                <h3 style="font-size:16px; font-weight:700;">📜 Nhật Ký Thao Tác Hệ Thống (Audit Trail)</h3>
+              </div>
+            </div>
+            
+            <p style="color:var(--text-secondary); font-size:13px; margin-bottom:20px;">
+              Ghi lại toàn bộ thao tác can thiệp của Quản trị viên (Khóa/mở tài khoản, sửa quái vật, đổi giá vật phẩm, chỉnh góc bài tập...) nhằm đảm bảo tính minh bạch và truy vết an ninh.
+            </p>
+
+            <div class="table-container">
+              <table class="admin-table">
+                <thead>
+                  <tr>
+                    <th>Mã Log</th>
+                    <th>Quản Trị Viên</th>
+                    <th>Hành Động</th>
+                    <th>Đối Tượng</th>
+                    <th>Chi Tiết Thay Đổi</th>
+                    <th>Địa Chỉ IP</th>
+                    <th>Thời Gian</th>
+                  </tr>
+                </thead>
+                <tbody id="tableAuditBody">
+                  <tr><td colspan="7" style="text-align:center; padding:30px;">Đang tải nhật ký kiểm toán...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============================================================= -->
+        <!-- VIEW 8: TRẠNG THÁI HỆ THỐNG & CSDL (DEPLOYMENT NODE) -->
+        <!-- ============================================================= -->
+        <section id="view-database" class="view-section">
+          <div class="card" style="margin-bottom:24px;">
+            <h3 style="font-size:16px; font-weight:700; margin-bottom:16px;">⚙️ Thông Số Kỹ Thuật Nút Triển Khai (Deployment Node)</h3>
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:16px;">
+              <div style="background:rgba(255,255,255,0.03); border:1px solid var(--border-color); border-radius:12px; padding:16px;">
+                <div style="font-size:12px; color:var(--text-secondary); margin-bottom:4px;">CƠ SỞ DỮ LIỆU CHÍNH</div>
+                <div style="font-size:16px; font-weight:800; color:#38BDF8;" id="dbEngineText">SQLite Local / MySQL 8.0 InnoDB</div>
+                <div style="font-size:12px; color:var(--accent-emerald); margin-top:4px;">● Tệp tin: vigil_local.db / vigil_db</div>
+              </div>
+
+              <div style="background:rgba(255,255,255,0.03); border:1px solid var(--border-color); border-radius:12px; padding:16px;">
+                <div style="font-size:12px; color:var(--text-secondary); margin-bottom:4px;">MÔI TRƯỜNG THỰC THI BACKEND</div>
+                <div style="font-size:16px; font-weight:800; color:#C084FC;">Python 3.11 / Node.js Express REST</div>
+                <div style="font-size:12px; color:var(--text-muted); margin-top:4px;">Port: 3000 • Phân quyền JWT</div>
+              </div>
+
+              <div style="background:rgba(255,255,255,0.03); border:1px solid var(--border-color); border-radius:12px; padding:16px;">
+                <div style="font-size:12px; color:var(--text-secondary); margin-bottom:4px;">CHUẨN BẢO MẬT & MÃ HÓA</div>
+                <div style="font-size:16px; font-weight:800; color:#FBBF24;">BCrypt, HTTPS TLS 1.3 & Zero-leak</div>
+                <div style="font-size:12px; color:var(--text-muted); margin-top:4px;">Camera chỉ xử lý RAM, không lưu video</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <h3 style="font-size:16px; font-weight:700; margin-bottom:16px;">🛠️ Thao Tác Vận Hành Khẩn Cấp</h3>
+            <div style="display:flex; gap:12px; flex-wrap:wrap;">
+              <button class="btn btn-outline" onclick="app.seedSampleData()">🌱 Nạp Lại Dữ Liệu Mẫu (Demo Seed)</button>
+              <button class="btn btn-outline" onclick="app.exportDatabaseBackup()">💾 Xuất Báo Cáo Dữ Liệu (JSON)</button>
+              <button class="btn btn-danger" onclick="app.clearAuditLogs()">🗑️ Dọn Dẹp Nhật Ký Cũ</button>
+            </div>
+          </div>
+        </section>
+
+      </main>
+    </div>
+  </div>
+
+  <!-- ============================================================= -->
+  <!-- MODAL: KHÓA / MỞ KHÓA TÀI KHOẢN (FR8.1 & UC08.1) -->
+  <!-- ============================================================= -->
+  <div class="modal-overlay" id="modalLockUser">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="modalLockTitle">Khóa Tài Khoản Người Chơi</h3>
+        <button class="modal-close" onclick="app.closeModal('modalLockUser')">&times;</button>
+      </div>
+      <input type="hidden" id="lockUserId">
+      <input type="hidden" id="lockCurrentStatus">
+      
+      <p style="margin-bottom:16px; font-size:14px;" id="lockUserMessage">
+        Bạn có chắc muốn thực hiện thao tác này cho tài khoản <strong id="lockTargetUsername" style="color:var(--accent-pink);">...</strong>?
+      </p>
+
+      <div class="form-group" id="groupLockReason">
+        <label>Lý Do Xử Phạt / Khóa Tài Khoản:</label>
+        <select id="selectLockReasonPreset" class="form-select" style="width:100%; margin-bottom:8px;" onchange="document.getElementById('inputLockReason').value = this.value;">
+          <option value="Gian lận số rep tập luyện (MediaPipe bypass / Auto-click)">Gian lận số rep tập luyện (MediaPipe bypass / Auto-click)</option>
+          <option value="Tốc độ rep bất thường (< 200ms/rep liên tục)">Tốc độ rep bất thường (&lt; 200ms/rep liên tục)</option>
+          <option value="Sử dụng ngôn từ vi phạm điều khoản trong Bang Hội">Sử dụng ngôn từ vi phạm điều khoản trong Bang Hội</option>
+          <option value="Yêu cầu tạm khóa từ phía người dùng">Yêu cầu tạm khóa từ phía người dùng</option>
+          <option value="Khác">Lý do khác...</option>
+        </select>
+        <input type="text" id="inputLockReason" class="form-input" style="width:100%;" value="Gian lận số rep tập luyện (MediaPipe bypass / Auto-click)">
+      </div>
+
+      <div class="form-actions">
+        <button class="btn btn-outline" onclick="app.closeModal('modalLockUser')">Hủy Bỏ</button>
+        <button class="btn btn-danger" id="btnConfirmLockUser" onclick="app.submitLockUser()">Xác Nhận Khóa</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================= -->
+  <!-- MODAL: CHỈNH SỬA THÔNG SỐ NGƯỜI DÙNG -->
+  <!-- ============================================================= -->
+  <div class="modal-overlay" id="modalEditUser">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Chỉnh Sửa Hồ Sơ & Tài Sản Người Chơi</h3>
+        <button class="modal-close" onclick="app.closeModal('modalEditUser')">&times;</button>
+      </div>
+      <input type="hidden" id="editUserId">
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Tên Tài Khoản:</label>
+          <input type="text" id="editUserUsername" class="form-input" style="width:100%;">
+        </div>
+        <div class="form-group">
+          <label>Cấp Độ (Level):</label>
+          <input type="number" id="editUserLevel" class="form-input" style="width:100%;" min="1" max="100">
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Số Vàng (Gold):</label>
+          <input type="number" id="editUserGold" class="form-input" style="width:100%;" min="0">
+        </div>
+        <div class="form-group">
+          <label>Kim Cương (Gems):</label>
+          <input type="number" id="editUserGems" class="form-input" style="width:100%;" min="0">
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Vai Trò (Role):</label>
+          <select id="editUserRole" class="form-select" style="width:100%;">
+            <option value="User">Người Chơi (User)</option>
+            <option value="Admin">Quản Trị Viên (Admin)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Chuỗi Ngày Tập (Streak):</label>
+          <input type="number" id="editUserStreak" class="form-input" style="width:100%;" min="0">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Mật Khẩu Mới (Để trống nếu không đổi):</label>
+        <input type="password" id="editUserPassword" class="form-input" style="width:100%;" placeholder="••••••••">
+      </div>
+
+      <div class="form-actions">
+        <button class="btn btn-outline" onclick="app.closeModal('modalEditUser')">Hủy</button>
+        <button class="btn btn-primary" onclick="app.submitEditUser()">Lưu Thay Đổi</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================= -->
+  <!-- MODAL: THÊM / SỬA QUÁI VẬT (ZERO-HARDCODING) -->
+  <!-- ============================================================= -->
+  <div class="modal-overlay" id="modalMonster">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="modalMonsterTitle">Cấu Hình Quái Vật & Trùm</h3>
+        <button class="modal-close" onclick="app.closeModal('modalMonster')">&times;</button>
+      </div>
+      <input type="hidden" id="monsterFormId">
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Tên Quái Vật:</label>
+          <input type="text" id="monsterName" class="form-input" style="width:100%;" placeholder="Slime Gai Nhọn">
+        </div>
+        <div class="form-group">
+          <label>Danh Hiệu / Title:</label>
+          <input type="text" id="monsterTitle" class="form-input" style="width:100%;" placeholder="Quái Bụi Cỏ">
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Avatar / Biểu Tượng:</label>
+          <input type="text" id="monsterAvatar" class="form-input" style="width:100%;" placeholder="🟢, 🐺, 🐉...">
+        </div>
+        <div class="form-group">
+          <label>Thuộc Chương (Stage):</label>
+          <select id="monsterChapter" class="form-select" style="width:100%;">
+            <option value="1">Chương 1: Đồng Cỏ Ngập Nắng</option>
+            <option value="2">Chương 2: Rừng Già Hắc Ám</option>
+            <option value="3">Chương 3: Hẻm Núi Nham Thạch</option>
+            <option value="4">Chương 4: Tháp Băng Vực Thẳm</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Máu Tối Đa (Max HP):</label>
+          <input type="number" id="monsterHp" class="form-input" style="width:100%;" placeholder="500">
+        </div>
+        <div class="form-group">
+          <label>Bài Tập Yêu Cầu:</label>
+          <select id="monsterExercise" class="form-select" style="width:100%;">
+            <option value="PUSHUP">Hít Đất (Push-up)</option>
+            <option value="SQUAT">Squat (Đùi & Chân)</option>
+            <option value="SITUP">Gập Bụng (Sit-up)</option>
+            <option value="PLANK">Plank (Giữ Thân)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Thưởng EXP:</label>
+          <input type="number" id="monsterExp" class="form-input" style="width:100%;" placeholder="100">
+        </div>
+        <div class="form-group">
+          <label>Thưởng Vàng:</label>
+          <input type="number" id="monsterGold" class="form-input" style="width:100%;" placeholder="30">
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Phân Loại Quái:</label>
+          <select id="monsterIsBoss" class="form-select" style="width:100%;">
+            <option value="0">Quái Thường</option>
+            <option value="1">Trùm Khu Vực (Boss)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Phẩm Cấp Rớt Đồ:</label>
+          <select id="monsterDropRarity" class="form-select" style="width:100%;">
+            <option value="RARE">RARE (Hiếm)</option>
+            <option value="EPIC">EPIC (Sử Thi)</option>
+            <option value="LEGENDARY">LEGENDARY (Huyền Thoại)</option>
+            <option value="MYTHIC">MYTHIC (Thần Thoại)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Truyền Thuyết / Hướng Dẫn Vận Động (Lore):</label>
+        <textarea id="monsterLore" class="form-input" style="width:100%; height:60px; resize:none;" placeholder="Mô tả kỹ thuật khắc chế động tác của quái vật..."></textarea>
+      </div>
+
+      <div class="form-actions">
+        <button class="btn btn-outline" onclick="app.closeModal('modalMonster')">Hủy</button>
+        <button class="btn btn-primary" onclick="app.submitMonster()">Lưu Quái Vật</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================= -->
+  <!-- MODAL: THÊM / SỬA VẬT PHẨM (ZERO-HARDCODING) -->
+  <!-- ============================================================= -->
+  <div class="modal-overlay" id="modalItem">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="modalItemTitle">Cấu Hình Vật Phẩm & Cửa Hàng</h3>
+        <button class="modal-close" onclick="app.closeModal('modalItem')">&times;</button>
+      </div>
+      <input type="hidden" id="itemFormId">
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Mã Định Danh (ID):</label>
+          <input type="text" id="itemId" class="form-input" style="width:100%;" placeholder="weapon_flame_sword">
+        </div>
+        <div class="form-group">
+          <label>Tên Vật Phẩm:</label>
+          <input type="text" id="itemName" class="form-input" style="width:100%;" placeholder="Hỏa Kiếm Cuồng Long">
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Vị Trí Trang Bị (Slot):</label>
+          <select id="itemSlot" class="form-select" style="width:100%;">
+            <option value="WEAPON">Vũ Khí (WEAPON)</option>
+            <option value="HELMET">Mũ Giáp (HELMET)</option>
+            <option value="ARMOR">Áo Giáp (ARMOR)</option>
+            <option value="GLOVES">Găng Tay (GLOVES)</option>
+            <option value="BOOTS">Giày (BOOTS)</option>
+            <option value="AMULET">Bùa Chú (AMULET)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Độ Hiếm (Rarity):</label>
+          <select id="itemRarity" class="form-select" style="width:100%;">
+            <option value="COMMON">COMMON</option>
+            <option value="UNCOMMON">UNCOMMON</option>
+            <option value="RARE">RARE</option>
+            <option value="EPIC">EPIC</option>
+            <option value="LEGENDARY">LEGENDARY</option>
+            <option value="MYTHIC">MYTHIC</option>
+            <option value="ANCIENT">ANCIENT</option>
+            <option value="DIVINE">DIVINE</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Giá Bán Vàng:</label>
+          <input type="number" id="itemPriceGold" class="form-input" style="width:100%;" placeholder="200">
+        </div>
+        <div class="form-group">
+          <label>Giá Bán Kim Cương:</label>
+          <input type="number" id="itemPriceGems" class="form-input" style="width:100%;" placeholder="0">
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>+ STR (Sức Mạnh):</label>
+          <input type="number" id="itemBonusStr" class="form-input" style="width:100%;" value="0">
+        </div>
+        <div class="form-group">
+          <label>+ END (Thể Lực):</label>
+          <input type="number" id="itemBonusEnd" class="form-input" style="width:100%;" value="0">
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>+ PRE (Chuẩn Xác):</label>
+          <input type="number" id="itemBonusPre" class="form-input" style="width:100%;" value="0">
+        </div>
+        <div class="form-group">
+          <label>+ LUCK (May Mắn Rớt Đồ):</label>
+          <input type="number" id="itemBonusLuck" class="form-input" style="width:100%;" value="0">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Biểu Tượng Icon (Emoji):</label>
+        <input type="text" id="itemIcon" class="form-input" style="width:100%;" placeholder="⚔️, 🛡️, 👑...">
+      </div>
+
+      <div class="form-group">
+        <label>Mô Tả Trang Bị:</label>
+        <textarea id="itemDesc" class="form-input" style="width:100%; height:50px; resize:none;" placeholder="Công dụng và truyền thuyết vật phẩm..."></textarea>
+      </div>
+
+      <div class="form-actions">
+        <button class="btn btn-outline" onclick="app.closeModal('modalItem')">Hủy</button>
+        <button class="btn btn-primary" onclick="app.submitItem()">Lưu Vật Phẩm</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================= -->
+  <!-- MODAL: CẤU HÌNH BÀI TẬP AI (FR8.2) -->
+  <!-- ============================================================= -->
+  <div class="modal-overlay" id="modalExercise">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="modalExerciseTitle">Cấu Hình Ngưỡng Góc Khớp AI</h3>
+        <button class="modal-close" onclick="app.closeModal('modalExercise')">&times;</button>
+      </div>
+      <input type="hidden" id="exerciseFormId">
+
+      <div class="form-group">
+        <label>Tên Bài Tập:</label>
+        <input type="text" id="exerciseName" class="form-input" style="width:100%;" readonly>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Góc Chuẩn Bị (Duỗi - Extend):</label>
+          <input type="number" id="exerciseExtendAngle" class="form-input" style="width:100%;" step="0.5" placeholder="165.0">
+          <small style="color:var(--text-muted); font-size:11px;">Độ mở tối thiểu để bắt đầu rep mới</small>
+        </div>
+        <div class="form-group">
+          <label>Góc Hoàn Thành (Gập - Contract):</label>
+          <input type="number" id="exerciseContractAngle" class="form-input" style="width:100%;" step="0.5" placeholder="90.0">
+          <small style="color:var(--text-muted); font-size:11px;">Độ gập sâu hợp lệ để tính 1 rep</small>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Hệ Số Sát Thương/Rep:</label>
+          <input type="number" id="exerciseDamageFactor" class="form-input" style="width:100%;" step="0.1" placeholder="1.2">
+        </div>
+        <div class="form-group">
+          <label>Calo Tiêu Hao/Rep (kcal):</label>
+          <input type="number" id="exerciseCalories" class="form-input" style="width:100%;" step="0.05" placeholder="0.8">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Mô Tả Kỹ Thuật Động Tác:</label>
+        <textarea id="exerciseDesc" class="form-input" style="width:100%; height:60px; resize:none;"></textarea>
+      </div>
+
+      <div class="form-actions">
+        <button class="btn btn-outline" onclick="app.closeModal('modalExercise')">Hủy</button>
+        <button class="btn btn-primary" onclick="app.submitExercise()">Cập Nhật Ngưỡng AI</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================= -->
+  <!-- MODAL GATE: ĐĂNG NHẬP QUẢN TRỊ VIÊN (CHỈ HACHIMI HOẶC ADMIN) -->
+  <!-- ============================================================= -->
+  <div class="modal-overlay" id="authGateOverlay" style="display:flex; z-index:9999; background:rgba(6,4,16,0.92); backdrop-filter:blur(16px);">
+    <div class="modal-card" style="max-width:440px; border-color:var(--accent-pink); box-shadow: 0 0 30px rgba(255,90,122,0.3);">
+      <div style="text-align:center; margin-bottom:20px;">
+        <div style="font-size:44px; margin-bottom:8px;">🛡️</div>
+        <h2 style="font-size:22px; font-weight:800; background:linear-gradient(135deg, #FFF, #FF5A7A); -webkit-background-clip:text; -webkit-text-fill-color:transparent;">
+          VIGIL ADMIN CONSOLE
+        </h2>
+        <span class="badge badge-admin" style="margin-top:6px;">👑 XÁC THỰC QUYỀN HẠN TỐI CAO</span>
+      </div>
+
+      <div style="background:rgba(245,158,11,0.1); border:1px solid rgba(245,158,11,0.3); border-radius:10px; padding:12px; margin-bottom:20px; font-size:12px; line-height:1.6; color:#FDE68A;">
+        ⚠️ <strong>Quy định bảo mật hệ thống:</strong><br>
+        Chỉ duy nhất tài khoản <strong>Hachimi (Admin)</strong> hoặc tài khoản được Hachimi phân quyền mới có thể truy cập trang này. Mọi tài khoản khác tạo mới đều mặc định là Người Chơi (User) và bị chặn truy cập.
+      </div>
+
+      <form id="formAdminLogin" onsubmit="event.preventDefault(); app.handleAdminLogin();">
+        <div class="form-group">
+          <label>Tên Tài Khoản Quản Trị:</label>
+          <input type="text" id="inputAuthUser" class="form-input" style="width:100%;" value="Hachimi" placeholder="Nhập tên tài khoản...">
+        </div>
+
+        <div class="form-group">
+          <label>Mật Khẩu:</label>
+          <input type="password" id="inputAuthPass" class="form-input" style="width:100%;" value="123456" placeholder="Nhập mật khẩu...">
+        </div>
+
+        <div id="authErrorMessage" style="display:none; color:#F87171; background:rgba(239,68,68,0.15); border:1px solid rgba(239,68,68,0.3); border-radius:8px; padding:10px; font-size:12px; margin-bottom:14px; font-weight:600;"></div>
+
+        <button type="submit" class="btn btn-primary" style="width:100%; justify-content:center; padding:12px; font-size:14px; margin-bottom:10px;">
+          🚀 Đăng Nhập Quản Trị Viên
+        </button>
+      </form>
+
+      <div style="border-top:1px solid var(--border-color); padding-top:14px; margin-top:10px;">
+        <div style="font-size:11px; color:var(--text-muted); text-align:center; margin-bottom:8px;">XÁC THỰC QUẢN TRỊ VIÊN:</div>
+        <div style="display:flex; gap:8px;">
+          <button type="button" class="btn btn-outline btn-sm" style="flex:1; justify-content:center; font-size:11px;" onclick="app.quickFillLogin('Hachimi', '123456')">
+            🦊 Tài Khoản Quản Trị Gốc: Hachimi (Admin)
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <!-- Admin Application Logic Script -->
+  <script src="js/admin.js"></script>
+</body>
+</html>

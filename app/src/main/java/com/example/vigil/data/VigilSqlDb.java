@@ -47,7 +47,7 @@ import kotlin.Pair;
 public class VigilSqlDb extends SQLiteOpenHelper {
 
     public static final String DATABASE_NAME = "vigil_app.db";
-    public static final int DATABASE_VERSION = 6;
+    public static final int DATABASE_VERSION = 7;
 
 
     private static volatile VigilSqlDb INSTANCE;
@@ -64,6 +64,28 @@ public class VigilSqlDb extends SQLiteOpenHelper {
     }
 
     @Override
+    public void onOpen(SQLiteDatabase db) {
+        super.onOpen(db);
+        ensureUserColumns(db);
+    }
+
+    private void ensureUserColumns(SQLiteDatabase db) {
+        try {
+            db.execSQL("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'User';");
+        } catch (Exception ignored) {}
+        try {
+            db.execSQL("ALTER TABLE users ADD COLUMN status INTEGER NOT NULL DEFAULT 1;");
+        } catch (Exception ignored) {}
+        try {
+            db.execSQL("ALTER TABLE users ADD COLUMN lock_reason TEXT;");
+        } catch (Exception ignored) {}
+        try {
+            db.execSQL("UPDATE users SET role = 'Admin' WHERE LOWER(username) = 'hachimi';");
+            db.execSQL("DELETE FROM users WHERE username IN ('IronSpartan', 'SpeedyHacker99', 'admin', 'ShadowBlade');");
+        } catch (Exception ignored) {}
+    }
+
+    @Override
     public void onCreate(SQLiteDatabase db) {
         // 1. Bảng users
         db.execSQL("CREATE TABLE IF NOT EXISTS users (" +
@@ -71,6 +93,9 @@ public class VigilSqlDb extends SQLiteOpenHelper {
                 "username TEXT UNIQUE NOT NULL, " +
                 "password TEXT NOT NULL DEFAULT '123456', " +
                 "avatar TEXT NOT NULL DEFAULT '🧑‍🎤', " +
+                "role TEXT NOT NULL DEFAULT 'User', " +
+                "status INTEGER NOT NULL DEFAULT 1, " +
+                "lock_reason TEXT, " +
                 "gold INTEGER NOT NULL DEFAULT 0, " +
                 "gems INTEGER NOT NULL DEFAULT 0, " +
                 "xp INTEGER NOT NULL DEFAULT 0, " +
@@ -384,6 +409,9 @@ public class VigilSqlDb extends SQLiteOpenHelper {
             // Cập nhật lại 48 vật phẩm
             seedItems(db);
         }
+        if (oldVersion < 7) {
+            ensureUserColumns(db);
+        }
     }
 
     private void seedInitialUser(SQLiteDatabase db) {
@@ -392,6 +420,8 @@ public class VigilSqlDb extends SQLiteOpenHelper {
         cv.put("username", "Hachimi");
         cv.put("password", "123456");
         cv.put("avatar", "🦊");
+        cv.put("role", "Admin");
+        cv.put("status", 1);
         cv.put("gold", 0);
         cv.put("gems", 0);
         cv.put("xp", 120);
@@ -1027,6 +1057,8 @@ public class VigilSqlDb extends SQLiteOpenHelper {
         cv.put("username", trimmed);
         cv.put("password", password);
         cv.put("avatar", avatar != null ? avatar : "🧑‍🎤");
+        cv.put("role", trimmed.equalsIgnoreCase("hachimi") ? "Admin" : "User");
+        cv.put("status", 1);
         cv.put("gold", 0);
         cv.put("gems", 0);
         cv.put("xp", 0);
@@ -1053,7 +1085,7 @@ public class VigilSqlDb extends SQLiteOpenHelper {
     public Pair<Integer, String> loginUser(String username, String password) {
         String trimmed = username.trim();
         SQLiteDatabase db = getReadableDatabase();
-        Cursor cursor = db.rawQuery("SELECT id, password FROM users WHERE LOWER(username) = LOWER(?)", new String[]{trimmed});
+        Cursor cursor = db.rawQuery("SELECT id, password, role, status, lock_reason FROM users WHERE LOWER(username) = LOWER(?)", new String[]{trimmed});
         if (!cursor.moveToFirst()) {
             cursor.close();
             return new Pair<>(null, "Không tìm thấy tài khoản '" + trimmed + "'!");
@@ -1061,7 +1093,15 @@ public class VigilSqlDb extends SQLiteOpenHelper {
 
         int id = cursor.getInt(cursor.getColumnIndexOrThrow("id"));
         String storedPw = cursor.getString(cursor.getColumnIndexOrThrow("password"));
+        int statusIdx = cursor.getColumnIndex("status");
+        int status = (statusIdx != -1 && !cursor.isNull(statusIdx)) ? cursor.getInt(statusIdx) : 1;
+        int lockIdx = cursor.getColumnIndex("lock_reason");
+        String lockReason = (lockIdx != -1 && !cursor.isNull(lockIdx)) ? cursor.getString(lockIdx) : "Vi phạm quy định hệ thống";
         cursor.close();
+
+        if (status == 0) {
+            return new Pair<>(null, "⛔ TÀI KHOẢN ĐÃ BỊ KHÓA!\nLý do: " + lockReason + "\nVui lòng liên hệ Quản trị viên để khiếu nại.");
+        }
 
         if (storedPw.equals(password)) {
             return new Pair<>(id, "Đăng nhập thành công! Chào mừng trở lại!");
@@ -1102,6 +1142,13 @@ public class VigilSqlDb extends SQLiteOpenHelper {
         else if (level < 10) title = "Chiến Binh";
         else title = "Huyền Thoại";
 
+        int roleIdx = cursor.getColumnIndex("role");
+        String role = (roleIdx != -1 && !cursor.isNull(roleIdx)) ? cursor.getString(roleIdx) : null;
+        int statusIdx = cursor.getColumnIndex("status");
+        int status = (statusIdx != -1 && !cursor.isNull(statusIdx)) ? cursor.getInt(statusIdx) : 1;
+        int lockIdx = cursor.getColumnIndex("lock_reason");
+        String lockReason = (lockIdx != -1 && !cursor.isNull(lockIdx)) ? cursor.getString(lockIdx) : null;
+
         return new UserProfile(
                 cursor.getInt(cursor.getColumnIndexOrThrow("id")),
                 cursor.getString(cursor.getColumnIndexOrThrow("username")),
@@ -1113,8 +1160,35 @@ public class VigilSqlDb extends SQLiteOpenHelper {
                 cursor.getInt(cursor.getColumnIndexOrThrow("total_reps")),
                 cursor.getInt(cursor.getColumnIndexOrThrow("stage")),
                 cursor.getString(cursor.getColumnIndexOrThrow("avatar")),
-                title
+                title,
+                role,
+                status,
+                lockReason
         );
+    }
+
+    public boolean updateUserRole(int userId, String newRole) {
+        SQLiteDatabase db = getWritableDatabase();
+        ContentValues cv = new ContentValues();
+        cv.put("role", newRole);
+        return db.update("users", cv, "id = ?", new String[]{String.valueOf(userId)}) > 0;
+    }
+
+    public boolean updateUserStatus(int userId, int status, String lockReason) {
+        SQLiteDatabase db = getWritableDatabase();
+        ContentValues cv = new ContentValues();
+        cv.put("status", status);
+        cv.put("lock_reason", status == 0 ? (lockReason != null ? lockReason : "Khóa bởi Admin") : null);
+        return db.update("users", cv, "id = ?", new String[]{String.valueOf(userId)}) > 0;
+    }
+
+    public boolean syncUserAdminStatus(String username, String role, int status, String lockReason) {
+        SQLiteDatabase db = getWritableDatabase();
+        ContentValues cv = new ContentValues();
+        if (role != null) cv.put("role", role);
+        cv.put("status", status);
+        cv.put("lock_reason", status == 0 ? lockReason : null);
+        return db.update("users", cv, "LOWER(username) = LOWER(?)", new String[]{username.trim()}) > 0;
     }
 
     // =========================================================================

@@ -578,5 +578,95 @@ public class ApiClient {
             return new Pair<>(false, "Lỗi kết nối: " + e.getMessage());
         }
     }
+
+    public static boolean updateUserRole(String username, String role) {
+        try {
+            JsonObject body = new JsonObject();
+            body.addProperty("username", username);
+            body.addProperty("role", role);
+            RequestBody reqBody = RequestBody.create(jsonMediaType, body.toString());
+
+            Request req = new Request.Builder().url(baseUrl + "/api/admin/users/update").post(reqBody).build();
+            try (Response res = client.newCall(req).execute()) {
+                return res.isSuccessful();
+            }
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    public static boolean banUser(String username, String reason) {
+        try {
+            JsonObject body = new JsonObject();
+            body.addProperty("username", username);
+            body.addProperty("reason", reason);
+            RequestBody reqBody = RequestBody.create(jsonMediaType, body.toString());
+
+            Request req = new Request.Builder().url(baseUrl + "/api/admin/anti-cheat/ban").post(reqBody).build();
+            try (Response res = client.newCall(req).execute()) {
+                return res.isSuccessful();
+            }
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    public static boolean unbanUser(String username) {
+        try {
+            JsonObject body = new JsonObject();
+            body.addProperty("username", username);
+            body.addProperty("status", 1);
+            RequestBody reqBody = RequestBody.create(jsonMediaType, body.toString());
+
+            Request req = new Request.Builder().url(baseUrl + "/api/admin/users/lock").post(reqBody).build();
+            try (Response res = client.newCall(req).execute()) {
+                return res.isSuccessful();
+            }
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    public static boolean saveMonster(int id, String name, int stageId, int maxHp, String exercise, int expReward, int goldReward, boolean isBoss) {
+        try {
+            JsonObject body = new JsonObject();
+            body.addProperty("id", id);
+            body.addProperty("name", name);
+            body.addProperty("stageId", stageId);
+            body.addProperty("maxHp", maxHp);
+            body.addProperty("exercise", exercise);
+            body.addProperty("expReward", expReward);
+            body.addProperty("goldReward", goldReward);
+            body.addProperty("isBoss", isBoss);
+            RequestBody reqBody = RequestBody.create(jsonMediaType, body.toString());
+
+            Request req = new Request.Builder().url(baseUrl + "/api/admin/monsters/save").post(reqBody).build();
+            try (Response res = client.newCall(req).execute()) {
+                return res.isSuccessful();
+            }
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    public static boolean saveExercise(String id, String name, float extendAngle, float contractAngle, float damageFactor, float caloriesPerRep) {
+        try {
+            JsonObject body = new JsonObject();
+            body.addProperty("id", id);
+            body.addProperty("name", name);
+            body.addProperty("extendAngle", extendAngle);
+            body.addProperty("contractAngle", contractAngle);
+            body.addProperty("damageFactor", damageFactor);
+            body.addProperty("caloriesPerRep", caloriesPerRep);
+            RequestBody reqBody = RequestBody.create(jsonMediaType, body.toString());
+
+            Request req = new Request.Builder().url(baseUrl + "/api/admin/exercises/save").post(reqBody).build();
+            try (Response res = client.newCall(req).execute()) {
+                return res.isSuccessful();
+            }
+        } catch (Exception e) {
+            return false;
+        }
+    }
 }
 

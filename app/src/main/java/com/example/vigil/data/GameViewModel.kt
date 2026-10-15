@@ -27,8 +27,11 @@ import com.example.vigil.model.QuestItem
 import com.example.vigil.model.WorkoutHistoryEntry
 import com.example.vigil.model.WorkoutReward
 import com.example.vigil.model.WorkoutSummaryStats
+import com.example.vigil.model.Monster
 import com.example.vigil.network.ApiClient
 import com.example.vigil.pose.Exercise
+import com.example.vigil.ui.AdminUserEntry
+import com.example.vigil.ui.ExerciseConfigItem
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 
@@ -95,6 +98,14 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
     var toastMessage by mutableStateOf<String?>(null)
     var authErrorMessage by mutableStateOf<String?>(null)
 
+    // Phân quyền & Trạng thái Khóa (Admin & Anti-cheat status)
+    var role by mutableStateOf("User")
+    var userStatus by mutableIntStateOf(1)
+    var lockReason by mutableStateOf<String?>(null)
+    var banDialogMessage by mutableStateOf<String?>(null)
+
+    val isAdmin: Boolean get() = role.equals("Admin", ignoreCase = true) || name.equals("Hachimi", ignoreCase = true)
+
     val xpNeeded: Int get() = 80 + level * 160
     val title: String get() = when {
         level < 3 -> "Tân Binh"
@@ -153,24 +164,35 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
         if (savedUserId != -1) {
             val user = db.getUserProfile(savedUserId)
             if (user != null) {
-                currentUserId = user.id
-                name = user.username
-                avatar = user.avatar
-                isLoggedIn = true
-                loadDataFromSql()
-                if (canClaimCheckInToday) {
-                    showQuestScrollDialog = true
+                if (user.isBanned) {
+                    isLoggedIn = false
+                    banDialogMessage = "⛔ TÀI KHOẢN ĐÃ BỊ KHÓA!\nLý do: " + (user.lockReason ?: "Vi phạm quy định hệ thống.") + "\nVui lòng liên hệ Quản trị viên để khiếu nại."
+                } else {
+                    currentUserId = user.id
+                    name = user.username
+                    avatar = user.avatar
+                    role = user.role
+                    userStatus = user.status
+                    lockReason = user.lockReason
+                    isLoggedIn = true
+                    loadDataFromSql()
+                    if (canClaimCheckInToday) {
+                        showQuestScrollDialog = true
+                    }
                 }
             } else {
                 isLoggedIn = false
             }
         } else {
-            // Mặc định cho phép người dùng vào ngay tài khoản mẫu Hachimi nếu chưa đăng ký tài khoản riêng
+            // Mặc định nạp tài khoản mẫu Hachimi nếu chưa đăng ký tài khoản riêng
             val defaultUser = db.getUserProfile(1)
-            if (defaultUser != null) {
+            if (defaultUser != null && !defaultUser.isBanned) {
                 currentUserId = 1
                 name = defaultUser.username
                 avatar = defaultUser.avatar
+                role = defaultUser.role
+                userStatus = defaultUser.status
+                lockReason = defaultUser.lockReason
                 isLoggedIn = true
                 loadDataFromSql()
                 if (canClaimCheckInToday) {
@@ -196,6 +218,12 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
             streak = cursor.getInt(cursor.getColumnIndexOrThrow("streak"))
             totalReps = cursor.getInt(cursor.getColumnIndexOrThrow("total_reps"))
             stage = cursor.getInt(cursor.getColumnIndexOrThrow("stage"))
+            val roleIdx = cursor.getColumnIndex("role")
+            role = if (roleIdx != -1 && !cursor.isNull(roleIdx)) cursor.getString(roleIdx) else if (name.equals("Hachimi", ignoreCase = true)) "Admin" else "User"
+            val statusIdx = cursor.getColumnIndex("status")
+            userStatus = if (statusIdx != -1 && !cursor.isNull(statusIdx)) cursor.getInt(statusIdx) else 1
+            val lockReasonIdx = cursor.getColumnIndex("lock_reason")
+            lockReason = if (lockReasonIdx != -1 && !cursor.isNull(lockReasonIdx)) cursor.getString(lockReasonIdx) else null
         }
         cursor.close()
 
@@ -262,6 +290,7 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
 
     fun login(username: String, password: String): Boolean {
         authErrorMessage = null
+        banDialogMessage = null
         val (userId, msg) = db.loginUser(username, password)
         if (userId != null) {
             currentUserId = userId
@@ -274,10 +303,19 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
             toastMessage = "Đăng nhập thành công! Chào $name! ⚔️"
 
             viewModelScope.launch {
-                ApiClient.login(username, password)
+                val res = ApiClient.login(username, password)
+                if (!res.first && res.second != null && res.second.contains("KHÓA", ignoreCase = true)) {
+                    db.updateUserStatus(userId, 0, res.second)
+                    banDialogMessage = res.second
+                    authErrorMessage = res.second
+                    isLoggedIn = false
+                }
             }
             return true
         } else {
+            if (msg.contains("KHÓA", ignoreCase = true) || msg.contains("⛔")) {
+                banDialogMessage = msg
+            }
             authErrorMessage = msg
             toastMessage = msg
             return false
@@ -286,6 +324,7 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
 
     fun register(username: String, password: String, chosenAvatar: String = "🧑‍🎤"): Boolean {
         authErrorMessage = null
+        banDialogMessage = null
         val (success, msg) = db.registerUser(username, password, chosenAvatar)
         if (success) {
             // Tự động đăng nhập luôn sau khi đăng ký
@@ -310,6 +349,98 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
         prefs.edit().remove("logged_in_user_id").remove("username").apply()
         isLoggedIn = false
         toastMessage = "Đã đăng xuất tài khoản!"
+    }
+
+    // =========================================================================
+    // QUẢN TRỊ VIÊN HỆ THỐNG (ADMIN PANEL FUNCTIONS)
+    // =========================================================================
+
+    fun getAdminUsers(): List<AdminUserEntry> {
+        val list = mutableListOf<AdminUserEntry>()
+        val readable = db.readableDatabase
+        val cursor = readable.rawQuery(
+            "SELECT id, username, avatar, level, gold, streak, total_reps, role, status, lock_reason FROM users ORDER BY id ASC", null
+        )
+        while (cursor.moveToNext()) {
+            val id = cursor.getInt(0)
+            val uName = cursor.getString(1)
+            val uAvatar = cursor.getString(2) ?: "🧑‍🎤"
+            val uLevel = cursor.getInt(3)
+            val uGold = cursor.getInt(4)
+            val uStreak = cursor.getInt(5)
+            val uReps = cursor.getInt(6)
+            val uRole = cursor.getString(7) ?: if (uName.equals("Hachimi", ignoreCase = true)) "Admin" else "User"
+            val uStatus = cursor.getInt(8)
+            val uReason = cursor.getString(9)
+            list.add(AdminUserEntry(id, uName, uAvatar, uLevel, uGold, uStreak, uReps, uRole, uStatus == 0, uReason))
+        }
+        cursor.close()
+        return list
+    }
+
+    fun setAdminUserRole(userId: Int, username: String, newRole: String) {
+        db.updateUserRole(userId, newRole)
+        if (userId == currentUserId) {
+            role = newRole
+        }
+        viewModelScope.launch {
+            try {
+                ApiClient.updateUserRole(username, newRole)
+            } catch (ignored: Exception) {}
+        }
+    }
+
+    fun setAdminUserLock(userId: Int, username: String, lock: Boolean, reason: String? = null) {
+        db.updateUserStatus(userId, if (lock) 0 else 1, reason)
+        if (userId == currentUserId) {
+            userStatus = if (lock) 0 else 1
+            lockReason = reason
+            if (lock) {
+                isLoggedIn = false
+                banDialogMessage = "⛔ TÀI KHOẢN ĐÃ BỊ KHÓA!\nLý do: ${reason ?: "Khóa bởi Admin"}\nVui lòng liên hệ Quản trị viên để khiếu nại."
+            }
+        }
+        viewModelScope.launch {
+            try {
+                if (lock) {
+                    ApiClient.banUser(username, reason ?: "Khóa bởi Admin")
+                } else {
+                    ApiClient.unbanUser(username)
+                }
+            } catch (ignored: Exception) {}
+        }
+    }
+
+    fun saveAdminMonster(monster: Monster) {
+        viewModelScope.launch {
+            try {
+                ApiClient.saveMonster(
+                    monster.stageId,
+                    monster.name,
+                    monster.stageId,
+                    monster.maxHp,
+                    monster.exercise.name,
+                    monster.expReward,
+                    monster.goldReward,
+                    monster.isBoss
+                )
+            } catch (ignored: Exception) {}
+        }
+    }
+
+    fun saveAdminExercise(ex: ExerciseConfigItem) {
+        viewModelScope.launch {
+            try {
+                ApiClient.saveExercise(
+                    ex.code,
+                    ex.name,
+                    ex.extendAngle,
+                    ex.contractAngle,
+                    ex.damageFactor,
+                    ex.caloPerRep
+                )
+            } catch (ignored: Exception) {}
+        }
     }
 
     // =========================================================================

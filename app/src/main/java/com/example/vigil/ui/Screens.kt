@@ -1326,6 +1326,36 @@ fun HeroScreen(vm: GameViewModel, nav: NavController) {
             Spacer(Modifier.height(6.dp)); ProgressBar(vm.xp / vm.xpNeeded.toFloat(), C.Yellow)
         }
 
+        // Bảng Quản Trị Hệ Thống (Hiển thị cho Hachimi hoặc tài khoản được cấp quyền Admin)
+        if (vm.isAdmin) {
+            Spacer(Modifier.height(10.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Brush.horizontalGradient(listOf(Color(0xFF8B5CF6).copy(alpha = 0.25f), Color(0xFFFF5A7A).copy(alpha = 0.25f))))
+                    .border(1.dp, C.Orange, RoundedCornerShape(16.dp))
+                    .clickable { nav.navigate("admin") }
+                    .padding(14.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("👑", fontSize = 28.sp)
+                        Spacer(Modifier.width(12.dp))
+                        Column {
+                            Text("Bảng Quản Trị Hệ Thống (Admin)", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                            Text("Quản trị viên [${vm.name}] • Quản lý người chơi & AI", color = C.Muted, fontSize = 11.sp)
+                        }
+                    }
+                    Text("Vào →", color = C.Orange, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                }
+            }
+        }
+
         // ====================== LỊCH SỬ RÈN LUYỆN & THỐNG KÊ CHI TIẾT ======================
         SectionLabel("Lịch sử rèn luyện chi tiết")
 

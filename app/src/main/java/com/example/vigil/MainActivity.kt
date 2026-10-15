@@ -91,6 +91,13 @@ fun AppRoot(vm: GameViewModel = viewModel()) {
                         val ex = try { Exercise.valueOf(exName) } catch (e: Exception) { Exercise.SQUAT }
                         WorkoutScreen(ex, vm, isGuildBoss = true) { nav.popBackStack() }
                     }
+                    composable("admin") {
+                        if (vm.isAdmin) {
+                            AdminScreen(vm) { nav.popBackStack() }
+                        } else {
+                            AdminAccessDeniedScreen(vm.name) { nav.popBackStack() }
+                        }
+                    }
 
                 }
             }

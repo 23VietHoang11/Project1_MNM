@@ -264,4 +264,56 @@ fun AuthScreen(vm: GameViewModel) {
             }
         }
     }
+
+    // Modal Cảnh Báo Khóa Tài Khoản (Ban Notification Dialog)
+    if (vm.banDialogMessage != null) {
+        AlertDialog(
+            onDismissRequest = { vm.banDialogMessage = null },
+            icon = { Text("⛔", fontSize = 42.sp) },
+            title = {
+                Text(
+                    "TÀI KHOẢN ĐÃ BỊ KHÓA",
+                    color = Color(0xFFFF5A7A),
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 18.sp,
+                    textAlign = TextAlign.Center
+                )
+            },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        vm.banDialogMessage!!,
+                        color = Color.White,
+                        fontSize = 14.sp,
+                        textAlign = TextAlign.Center,
+                        lineHeight = 20.sp
+                    )
+                    Spacer(Modifier.height(14.dp))
+                    Text(
+                        "Hệ thống Anti-Cheat & Kiểm toán Quản trị đã tạm ngưng quyền truy cập của tài khoản này.",
+                        color = C.Muted,
+                        fontSize = 12.sp,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            },
+            confirmButton = {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color(0xFFFF5A7A))
+                        .clickable { vm.banDialogMessage = null }
+                        .padding(vertical = 12.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("ĐÃ HIỂU", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                }
+            },
+            containerColor = Color(0xFF1B1530)
+        )
+    }
 }
