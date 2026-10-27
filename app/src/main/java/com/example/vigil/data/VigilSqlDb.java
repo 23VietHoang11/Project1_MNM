@@ -80,8 +80,10 @@ public class VigilSqlDb extends SQLiteOpenHelper {
             db.execSQL("ALTER TABLE users ADD COLUMN lock_reason TEXT;");
         } catch (Exception ignored) {}
         try {
+            // Chỉ duy nhất nick Hachimi mặc định là Admin ban đầu
             db.execSQL("UPDATE users SET role = 'Admin' WHERE LOWER(username) = 'hachimi';");
-            db.execSQL("DELETE FROM users WHERE username IN ('IronSpartan', 'SpeedyHacker99', 'admin', 'ShadowBlade');");
+            // Xóa sạch các tài khoản mẫu rác trước đó, chỉ giữ lại người chơi thực sự tạo trong CSDL
+            db.execSQL("DELETE FROM users WHERE username IN ('GiaHuy_Fit', 'ThanhTung_Pro', 'MinhAnh_Gym', 'IronSpartan', 'SpeedyHacker99', 'admin', 'ShadowBlade');");
         } catch (Exception ignored) {}
     }
 

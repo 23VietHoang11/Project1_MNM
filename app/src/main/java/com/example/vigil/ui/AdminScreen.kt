@@ -18,99 +18,48 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.vigil.data.GameViewModel
-import com.example.vigil.model.AdventureData
+import com.example.vigil.model.AdminUserEntry
+import com.example.vigil.model.CheatAlertItem
+import com.example.vigil.model.ExerciseConfigItem
 import com.example.vigil.model.Monster
-import com.example.vigil.pose.Exercise
-import kotlinx.coroutines.launch
 
-// Data class cho Người chơi hiển thị trên Admin
-data class AdminUserEntry(
-    val id: Int,
-    val username: String,
-    val avatar: String,
-    val level: Int,
-    val gold: Int,
-    val streak: Int,
-    val totalReps: Int,
-    val role: String,
-    var isLocked: Boolean,
-    var lockReason: String? = null
-)
-
-// Data class cho Cảnh báo gian lận
-data class CheatAlertItem(
-    val id: Int,
-    val username: String,
-    val exercise: String,
-    val reps: Int,
-    val durationSeconds: Int,
-    val reason: String,
-    var isResolved: Boolean = false
-)
-
-// Data class cho Cấu hình góc bài tập AI
-data class ExerciseConfigItem(
-    val code: String,
-    val name: String,
-    var extendAngle: Float,
-    var contractAngle: Float,
-    var damageFactor: Float,
-    var caloPerRep: Float
-)
-
+/**
+ * Giao diện Bảng Quản Trị Hệ Thống (Admin Screen).
+ * Tuân thủ Clean Architecture: Toàn bộ nghiệp vụ truy vấn CSDL SQLite và Backend REST API
+ * được chuyển qua ViewModel và AdminRepository. Lớp UI thuần túy hiển thị và nhận sự kiện.
+ */
 @Composable
 fun AdminScreen(vm: GameViewModel, onBack: () -> Unit) {
     var selectedTab by remember { mutableStateOf("USERS") } // USERS, MONSTERS, EXERCISES, CHEATS
-    val scope = rememberCoroutineScope()
 
-    // Nạp danh sách người dùng thực tế từ CSDL SQLite (chỉ các acc được tạo, Hachimi là Admin ban đầu)
+    // Lấy danh sách người chơi thực tế được tạo trong CSDL (Chỉ Hachimi là Admin ban đầu, các acc khác là User)
     var usersList by remember { mutableStateOf(vm.getAdminUsers()) }
 
     LaunchedEffect(selectedTab) {
         usersList = vm.getAdminUsers()
     }
 
-    var monstersList by remember {
-        mutableStateOf(
-            AdventureData.CHAPTERS.flatMap { it.monsters }.map { m ->
-                Monster(m.stageId, m.name, m.title, m.avatar, m.maxHp, m.exercise, m.isBoss, m.expReward, m.goldReward, m.lore, m.dropRarity, m.colorHex)
-            }
-        )
-    }
-
-    var exerciseConfigs by remember {
-        mutableStateOf(
-            listOf(
-                ExerciseConfigItem("PUSHUP", "Hít đất (Push-up)", 165f, 90f, 1.2f, 0.8f),
-                ExerciseConfigItem("SQUAT", "Squat", 170f, 90f, 1.0f, 1.0f),
-                ExerciseConfigItem("SITUP", "Gập bụng (Sit-up)", 160f, 75f, 1.1f, 0.6f),
-                ExerciseConfigItem("PLANK", "Plank", 180f, 170f, 1.5f, 0.1f),
-                ExerciseConfigItem("PULLUP", "Hít xà (Pull-up)", 160f, 70f, 2.0f, 1.5f),
-                ExerciseConfigItem("DIP", "Xà kép (Dip)", 160f, 90f, 1.4f, 0.9f)
-            )
-        )
-    }
-
-    var cheatAlerts by remember {
-        mutableStateOf(
-            listOf(
-                CheatAlertItem(101, "SpeedyHacker99", "PUSHUP", 150, 12, "Tốc độ 80ms/rep (< 200ms theo tiêu chuẩn NFR1)"),
-                CheatAlertItem(102, "BotFarmMaster", "SQUAT", 280, 25, "Spam cảm biến gia tốc liên tục")
-            )
-        )
-    }
+    var monstersList by remember { mutableStateOf(vm.getAdminMonsters()) }
+    var exerciseConfigs by remember { mutableStateOf(vm.getAdminExerciseConfigs()) }
+    var cheatAlerts by remember { mutableStateOf(vm.getAdminCheatAlerts()) }
 
     var showToastMessage by remember { mutableStateOf<String?>(null) }
     var editingMonster by remember { mutableStateOf<Monster?>(null) }
     var editingExercise by remember { mutableStateOf<ExerciseConfigItem?>(null) }
 
+    // State cho việc Đổi Role & Cấp Admin
+    var showingGrantAdminDialog by remember { mutableStateOf(false) }
+    var editingRoleUser by remember { mutableStateOf<AdminUserEntry?>(null) }
+
     Column(
         Modifier
             .fillMaxSize()
             .background(C.Bg)
-            .padding(16.dp)
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .padding(horizontal = 16.dp, vertical = 12.dp)
     ) {
-        // Topbar
+        // --- 1. TOPBAR ---
         Row(
             Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -119,65 +68,60 @@ fun AdminScreen(vm: GameViewModel, onBack: () -> Unit) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     Modifier
-                        .size(40.dp)
-                        .clip(CircleShape)
+                        .size(42.dp)
+                        .clip(RoundedCornerShape(12.dp))
                         .background(C.Card)
-                        .border(1.dp, C.Border, CircleShape)
+                        .border(1.dp, C.Border, RoundedCornerShape(12.dp))
                         .clickable { onBack() },
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("←", color = C.Text, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                    Text("←", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                 }
                 Spacer(Modifier.width(12.dp))
                 Column {
-                    Text("🛡️ BẢNG QUẢN TRỊ (ADMIN)", color = C.Orange, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
-                    Text("FR8 & UC08 • Zero-Hardcoding", color = C.Muted, fontSize = 11.sp)
+                    Text("🛡️ BẢNG QUẢN TRỊ", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 17.sp)
+                    Text("Trung tâm kiểm soát & Cân bằng game", color = C.Muted, fontSize = 12.sp)
                 }
             }
 
-            StatBadge("ROLE_ADMIN", C.Yellow)
-        }
-
-        Spacer(Modifier.height(16.dp))
-
-        // Live KPI Grid
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Box(Modifier.weight(1f).clip(RoundedCornerShape(12.dp)).background(C.Card).border(1.dp, C.Border, RoundedCornerShape(12.dp)).padding(10.dp)) {
-                Column {
-                    Text("NGƯỜI DÙNG", color = C.Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                    Text("${usersList.size}", color = C.Blue, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                }
-            }
-            Box(Modifier.weight(1f).clip(RoundedCornerShape(12.dp)).background(C.Card).border(1.dp, C.Border, RoundedCornerShape(12.dp)).padding(10.dp)) {
-                Column {
-                    Text("DAU HÔM NAY", color = C.Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                    Text("3", color = C.Green, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                }
-            }
-            Box(Modifier.weight(1f).clip(RoundedCornerShape(12.dp)).background(C.Card).border(1.dp, C.Border, RoundedCornerShape(12.dp)).padding(10.dp)) {
-                Column {
-                    Text("TỔNG REPS", color = C.Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                    Text("${usersList.sumOf { it.totalReps }}", color = C.Pink, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                }
-            }
-            Box(Modifier.weight(1f).clip(RoundedCornerShape(12.dp)).background(C.Card).border(1.dp, C.Border, RoundedCornerShape(12.dp)).padding(10.dp)) {
-                Column {
-                    Text("CẢNH BÁO", color = C.Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                    Text("${cheatAlerts.count { !it.isResolved }}", color = Color(0xFFEF4444), fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                }
+            Box(
+                Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0xFFFFC94D).copy(alpha = 0.15f))
+                    .border(1.dp, Color(0xFFFFC94D).copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                    .padding(horizontal = 8.dp, vertical = 5.dp)
+            ) {
+                Text("👑 ROLE_ADMIN", color = Color(0xFFFFC94D), fontSize = 11.sp, fontWeight = FontWeight.Bold)
             }
         }
 
         Spacer(Modifier.height(14.dp))
 
-        // Tabs Selection Bar
+        // --- 2. LIVE KPI METRICS CÂN ĐỐI ---
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            AdminKpiCard(Modifier.weight(1f), "Tài Khoản", "${usersList.size}", Color(0xFF60A5FA))
+            AdminKpiCard(Modifier.weight(1f), "Đấu Hôm Nay", "3", Color(0xFF34D399))
+            AdminKpiCard(Modifier.weight(1f), "Tổng Reps", "${usersList.sumOf { it.totalReps }}", Color(0xFFF472B6))
+            val unresolvedCheats = cheatAlerts.count { !it.isResolved }
+            AdminKpiCard(
+                Modifier.weight(1f),
+                "Cảnh Báo",
+                "$unresolvedCheats",
+                if (unresolvedCheats > 0) Color(0xFFEF4444) else Color(0xFF34D399)
+            )
+        }
+
+        Spacer(Modifier.height(14.dp))
+
+        // --- 3. TAB SELECTION BAR ---
         Row(
             Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(14.dp))
                 .background(Color(0xFF13102B))
+                .border(1.dp, Color(0xFF251F4A), RoundedCornerShape(14.dp))
                 .padding(4.dp),
-            horizontalArrangement = Arrangement.SpaceBetween
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             val tabs = listOf(
                 "USERS" to "👥 Người Chơi",
@@ -187,111 +131,271 @@ fun AdminScreen(vm: GameViewModel, onBack: () -> Unit) {
             )
             tabs.forEach { (key, label) ->
                 val isSelected = selectedTab == key
+                val hasAlert = key == "CHEATS" && cheatAlerts.any { !it.isResolved }
+
                 Box(
                     Modifier
                         .weight(1f)
                         .clip(RoundedCornerShape(10.dp))
                         .background(if (isSelected) C.Orange else Color.Transparent)
                         .clickable { selectedTab = key }
-                        .padding(vertical = 8.dp),
+                        .padding(vertical = 9.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        label,
-                        color = if (isSelected) Color.White else C.Muted,
-                        fontSize = 11.sp,
-                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            label,
+                            color = if (isSelected) Color.White else C.Muted,
+                            fontSize = 11.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                        )
+                        if (hasAlert && !isSelected) {
+                            Spacer(Modifier.width(4.dp))
+                            Box(Modifier.size(6.dp).clip(CircleShape).background(Color(0xFFEF4444)))
+                        }
+                    }
                 }
             }
         }
 
-        Spacer(Modifier.height(14.dp))
+        Spacer(Modifier.height(12.dp))
 
-        // Tab Content
+        // --- 4. NỘI DUNG TỪNG TAB ---
         LazyColumn(
-            Modifier.fillMaxSize(),
+            Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            // TAB 1: QUẢN LÝ NGƯỜI CHƠI (FR8.1 & UC08.1)
+            // ==================== TAB 1: NGƯỜI CHƠI (CHỈ LẤY TỪ CSDL THỰC TẾ) ====================
             if (selectedTab == "USERS") {
                 item {
-                    Text("DANH SÁCH TÀI KHOẢN NGƯỜI DÙNG (${usersList.size})", color = C.Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                }
-
-                items(usersList) { user ->
-                    VCard {
+                    Column(Modifier.fillMaxWidth()) {
                         Row(
                             Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(user.avatar, fontSize = 26.sp)
-                                Spacer(Modifier.width(10.dp))
-                                Column {
+                            Text("TÀI KHOẢN TRONG CSDL (${usersList.size})", color = C.Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                            Text("Chỉ Hachimi là Admin ban đầu", color = Color(0xFFFFC94D), fontSize = 10.sp, fontWeight = FontWeight.Medium)
+                        }
+
+                        Spacer(Modifier.height(8.dp))
+
+                        // Nút hành động: Cấp Admin theo tên tài khoản & Làm mới
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Box(
+                                Modifier
+                                    .weight(1.3f)
+                                    .height(38.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(C.Orange)
+                                    .clickable { showingGrantAdminDialog = true },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("👑", fontSize = 13.sp)
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("Cấp Quyền Admin Theo Tên", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+
+                            Box(
+                                Modifier
+                                    .weight(0.7f)
+                                    .height(38.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(Color(0xFF221A3E))
+                                    .border(1.dp, Color(0xFF3B2F63), RoundedCornerShape(10.dp))
+                                    .clickable {
+                                        usersList = vm.getAdminUsers()
+                                        showToastMessage = "Đã làm mới danh sách tài khoản từ CSDL!"
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text("🔄 Làm Mới", color = Color(0xFFC4B5FD), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+
+                // Nếu chỉ mới có duy nhất Hachimi (chưa tạo thêm acc nào khác)
+                if (usersList.size <= 1) {
+                    item {
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(Color(0xFF16122E))
+                                .border(1.dp, Color(0xFF2E2657), RoundedCornerShape(14.dp))
+                                .padding(16.dp)
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                                Text("🛡️", fontSize = 24.sp)
+                                Spacer(Modifier.height(6.dp))
+                                Text("Quy tắc quản trị vai trò:", color = Color(0xFFFFC94D), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    "Hiện tại duy nhất Hachimi là Admin. Mọi người chơi bạn đăng ký trong ứng dụng sẽ tự động xuất hiện tại đây với vai trò User. Bạn có thể bấm Thăng Cấp ADMIN cho bất kỳ ai!",
+                                    color = C.Muted,
+                                    fontSize = 11.sp,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                    lineHeight = 16.sp
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Danh sách người chơi thực tế lấy từ CSDL
+                items(usersList) { user ->
+                    VCard {
+                        Column(Modifier.fillMaxWidth()) {
+                            // Dòng 1: Thông tin người chơi
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    Modifier
+                                        .size(46.dp)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(Color(0xFF221A3E))
+                                        .border(1.dp, Color(0xFF3B2F63), RoundedCornerShape(12.dp)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(user.avatar, fontSize = 24.sp)
+                                }
+                                Spacer(Modifier.width(12.dp))
+                                Column(Modifier.weight(1f)) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         val isHachimi = user.username.equals("Hachimi", ignoreCase = true)
+                                        val isRoleAdmin = user.role.equals("Admin", ignoreCase = true)
+                                        val isRoleMod = user.role.equals("Moderator", ignoreCase = true)
+
                                         Text(user.username, color = C.Text, fontWeight = FontWeight.Bold, fontSize = 15.sp)
                                         Spacer(Modifier.width(6.dp))
                                         StatBadge(
-                                            if (isHachimi) "👑 ADMIN TỐI CAO" else user.role,
-                                            if (user.role == "Admin") C.Yellow else C.Blue
+                                            when {
+                                                isHachimi -> "👑 ROOT ADMIN"
+                                                isRoleAdmin -> "👑 ADMIN"
+                                                isRoleMod -> "⚔️ MODERATOR"
+                                                else -> "🛡️ USER"
+                                            },
+                                            when {
+                                                isHachimi || isRoleAdmin -> C.Yellow
+                                                isRoleMod -> Color(0xFFA78BFA)
+                                                else -> C.Blue
+                                            }
                                         )
                                     }
-                                    Text("Lv.${user.level} • 🪙 ${user.gold} • 🔥 ${user.streak} ngày • ${user.totalReps} reps", color = C.Muted, fontSize = 11.sp)
-                                    if (user.isLocked && user.lockReason != null) {
-                                        Text("Lý do khóa: ${user.lockReason}", color = Color(0xFFEF4444), fontSize = 10.sp)
+                                    Spacer(Modifier.height(3.dp))
+                                    Text(
+                                        "Lv.${user.level}  •  🪙 ${user.gold}  •  🔥 ${user.streak}d  •  💪 ${user.totalReps} reps",
+                                        color = C.Muted,
+                                        fontSize = 11.sp
+                                    )
+                                    if (user.isLocked) {
+                                        Spacer(Modifier.height(3.dp))
+                                        Text(
+                                            "🔒 Đang bị khóa: ${user.lockReason ?: "Vi phạm chính sách"}",
+                                            color = Color(0xFFFF6B6B),
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
                                     }
                                 }
                             }
 
+                            Spacer(Modifier.height(10.dp))
+                            Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0xFF252047)))
+                            Spacer(Modifier.height(10.dp))
+
+                            // Dòng 2: Hàng nút bấm phân quyền (Admin / User / Mod) & Khóa nick
                             val isHachimi = user.username.equals("Hachimi", ignoreCase = true)
-                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                if (isHachimi) {
+                            if (isHachimi) {
+                                Box(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(Color(0xFFFFC94D).copy(alpha = 0.12f))
+                                        .border(1.dp, Color(0xFFFFC94D).copy(alpha = 0.4f), RoundedCornerShape(10.dp))
+                                        .padding(vertical = 9.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text("🛡️ TÀI KHOẢN ROOT ADMIN - BẤT KHẢ XÂM PHẠM", color = Color(0xFFFFC94D), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                            } else {
+                                Row(
+                                    Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    val isRoleAdmin = user.role.equals("Admin", ignoreCase = true)
+
+                                    // Nút chuyển đổi: Thăng cấp ADMIN hoặc Hạ về USER
                                     Box(
                                         Modifier
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .background(Color.White.copy(alpha = 0.08f))
-                                            .padding(horizontal = 8.dp, vertical = 6.dp)
-                                    ) {
-                                        Text("🛡️ BẤT KHẢ XÂM PHẠM", color = C.Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                                    }
-                                } else {
-                                    // Nút phân quyền: Cấp Admin hoặc Giáng User
-                                    val isRoleAdmin = user.role == "Admin"
-                                    Box(
-                                        Modifier
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .background(if (isRoleAdmin) Color(0xFFF59E0B).copy(alpha = 0.2f) else Color(0xFF8B5CF6).copy(alpha = 0.2f))
-                                            .border(1.dp, if (isRoleAdmin) Color(0xFFF59E0B) else Color(0xFF8B5CF6), RoundedCornerShape(8.dp))
+                                            .weight(1.3f)
+                                            .height(38.dp)
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(if (isRoleAdmin) Color(0xFF6D28D9).copy(alpha = 0.35f) else Color(0xFFFF9800))
+                                            .border(1.dp, if (isRoleAdmin) Color(0xFF8B5CF6) else Color(0xFFFFB74D), RoundedCornerShape(10.dp))
                                             .clickable {
                                                 val newRole = if (isRoleAdmin) "User" else "Admin"
                                                 vm.setAdminUserRole(user.id, user.username, newRole)
                                                 usersList = vm.getAdminUsers()
-                                                showToastMessage = if (isRoleAdmin) "Đã hạ quyền ${user.username} xuống User!" else "Đã cấp quyền Admin cho ${user.username}!"
-                                            }
-                                            .padding(horizontal = 8.dp, vertical = 6.dp)
+                                                showToastMessage = if (isRoleAdmin) "Đã hạ quyền ${user.username} về User!" else "Đã cấp quyền ADMIN thành công cho ${user.username}!"
+                                            },
+                                        contentAlignment = Alignment.Center
                                     ) {
-                                        Text(if (isRoleAdmin) "🛡️ Hạ User" else "👑 Cấp Admin", color = if (isRoleAdmin) Color(0xFFFDE68A) else Color(0xFFC4B5FD), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(if (isRoleAdmin) "🛡️" else "👑", fontSize = 12.sp)
+                                            Spacer(Modifier.width(4.dp))
+                                            Text(
+                                                if (isRoleAdmin) "Hạ Về User" else "Thăng ADMIN",
+                                                color = Color.White,
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
                                     }
 
-                                    // Nút khóa / mở khóa tài khoản
+                                    // Nút đổi vai trò chi tiết (Mở hộp thoại chọn User / Admin / Moderator)
                                     Box(
                                         Modifier
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .background(if (user.isLocked) C.Green.copy(alpha = 0.2f) else Color(0xFFEF4444).copy(alpha = 0.2f))
-                                            .border(1.dp, if (user.isLocked) C.Green else Color(0xFFEF4444), RoundedCornerShape(8.dp))
+                                            .weight(1f)
+                                            .height(38.dp)
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(Color(0xFF1E193C))
+                                            .border(1.dp, Color(0xFF382F63), RoundedCornerShape(10.dp))
+                                            .clickable { editingRoleUser = user },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text("⚙️ Đổi Role", color = Color(0xFFDDD6FE), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    }
+
+                                    // Nút Khóa / Mở Khóa Acc
+                                    Box(
+                                        Modifier
+                                            .weight(0.9f)
+                                            .height(38.dp)
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(if (user.isLocked) Color(0xFF10B981).copy(alpha = 0.2f) else Color(0xFFEF4444).copy(alpha = 0.2f))
+                                            .border(1.dp, if (user.isLocked) Color(0xFF10B981) else Color(0xFFEF4444), RoundedCornerShape(10.dp))
                                             .clickable {
                                                 val willLock = !user.isLocked
                                                 val reason = if (willLock) "Khóa bởi Quản trị viên" else null
                                                 vm.setAdminUserLock(user.id, user.username, willLock, reason)
                                                 usersList = vm.getAdminUsers()
                                                 showToastMessage = if (willLock) "Đã khóa tài khoản ${user.username}!" else "Đã mở khóa tài khoản ${user.username}!"
-                                            }
-                                            .padding(horizontal = 8.dp, vertical = 6.dp)
+                                            },
+                                        contentAlignment = Alignment.Center
                                     ) {
-                                        Text(if (user.isLocked) "🔓 Mở" else "🔒 Khóa", color = if (user.isLocked) C.Green else Color(0xFFEF4444), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                        Text(
+                                            if (user.isLocked) "🔓 Mở" else "🔒 Khóa",
+                                            color = if (user.isLocked) Color(0xFF6EE7B7) else Color(0xFFFCA5A5),
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
                                     }
                                 }
                             }
@@ -300,77 +404,136 @@ fun AdminScreen(vm: GameViewModel, onBack: () -> Unit) {
                 }
             }
 
-            // TAB 2: CẤU HÌNH QUÁI VẬT (FR8.2 & ZERO-HARDCODING)
+            // ==================== TAB 2: QUÁI VẬT & BOSS ====================
             else if (selectedTab == "MONSTERS") {
                 item {
-                    Text("CẤU HÌNH THÔNG SỐ QUÁI VẬT & BOSS (ZERO-HARDCODING)", color = C.Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("QUẢN LÝ QUÁI VẬT & BOSS (${monstersList.size})", color = C.Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                        Text("Chỉnh HP & phần thưởng", color = C.Muted.copy(alpha = 0.7f), fontSize = 10.sp)
+                    }
                 }
 
                 items(monstersList) { monster ->
                     VCard {
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(monster.avatar, fontSize = 28.sp)
-                                Spacer(Modifier.width(10.dp))
-                                Column {
+                        Column(Modifier.fillMaxWidth()) {
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    Modifier
+                                        .size(46.dp)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(Color(0xFF221A3E))
+                                        .border(1.dp, Color(0xFF3B2F63), RoundedCornerShape(12.dp)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(monster.avatar, fontSize = 24.sp)
+                                }
+                                Spacer(Modifier.width(12.dp))
+                                Column(Modifier.weight(1f)) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text(monster.name, color = C.Text, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                        Text(monster.name, color = C.Text, fontWeight = FontWeight.Bold, fontSize = 15.sp)
                                         if (monster.isBoss) {
                                             Spacer(Modifier.width(6.dp))
                                             StatBadge("BOSS", C.Pink)
                                         }
                                     }
-                                    Text("Chương ${monster.stageId} • ${monster.exercise.name} • +${monster.expReward} EXP • +${monster.goldReward} 🪙", color = C.Muted, fontSize = 11.sp)
-                                    Text("Máu (HP): ${monster.maxHp}", color = Color(0xFFEF4444), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    Spacer(Modifier.height(3.dp))
+                                    Text(
+                                        "Chương ${monster.stageId} • ${monster.exercise.name}",
+                                        color = C.Muted,
+                                        fontSize = 11.sp
+                                    )
+                                    Spacer(Modifier.height(2.dp))
+                                    Text(
+                                        "✨ +${monster.expReward} EXP  •  🪙 +${monster.goldReward} Vàng",
+                                        color = Color(0xFFFFC94D),
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+                                Spacer(Modifier.width(8.dp))
+                                Box(
+                                    Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(Color(0xFFEF4444).copy(alpha = 0.15f))
+                                        .border(1.dp, Color(0xFFEF4444).copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                                        .padding(horizontal = 8.dp, vertical = 5.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text("❤️ MÁU (HP)", color = Color(0xFFFCA5A5), fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                                        Text("${monster.maxHp}", color = Color(0xFFFF6B6B), fontSize = 14.sp, fontWeight = FontWeight.ExtraBold)
+                                    }
                                 }
                             }
 
-                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Spacer(Modifier.height(10.dp))
+                            Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0xFF252047)))
+                            Spacer(Modifier.height(10.dp))
+
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
                                 Box(
                                     Modifier
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(C.Card)
-                                        .border(1.dp, C.Border, RoundedCornerShape(8.dp))
+                                        .weight(1f)
+                                        .height(38.dp)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(Color(0xFF1E193C))
+                                        .border(1.dp, Color(0xFF382F63), RoundedCornerShape(10.dp))
                                         .clickable {
-                                            val updated = Monster(monster.stageId, monster.name, monster.title, monster.avatar, maxOf(100, monster.maxHp - 100), monster.exercise, monster.isBoss, monster.expReward, monster.goldReward, monster.lore, monster.dropRarity, monster.colorHex)
+                                            val newHp = maxOf(100, monster.maxHp - 100)
+                                            val updated = Monster(monster.stageId, monster.name, monster.title, monster.avatar, newHp, monster.exercise, monster.isBoss, monster.expReward, monster.goldReward, monster.lore, monster.dropRarity, monster.colorHex)
                                             monstersList = monstersList.map { if (it.name == monster.name) updated else it }
                                             vm.saveAdminMonster(updated)
-                                            showToastMessage = "Đã giảm 100 HP cho ${monster.name}"
-                                        }
-                                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                                            showToastMessage = "Đã giảm 100 HP cho ${monster.name} (còn $newHp HP)"
+                                        },
+                                    contentAlignment = Alignment.Center
                                 ) {
-                                    Text("-100", color = C.Text, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    Text("-100 HP", color = Color(0xFFCBD5E1), fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                 }
 
                                 Box(
                                     Modifier
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(C.Card)
-                                        .border(1.dp, C.Border, RoundedCornerShape(8.dp))
+                                        .weight(1f)
+                                        .height(38.dp)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(Color(0xFF1E193C))
+                                        .border(1.dp, Color(0xFF382F63), RoundedCornerShape(10.dp))
                                         .clickable {
-                                            val updated = Monster(monster.stageId, monster.name, monster.title, monster.avatar, monster.maxHp + 200, monster.exercise, monster.isBoss, monster.expReward, monster.goldReward, monster.lore, monster.dropRarity, monster.colorHex)
+                                            val newHp = monster.maxHp + 200
+                                            val updated = Monster(monster.stageId, monster.name, monster.title, monster.avatar, newHp, monster.exercise, monster.isBoss, monster.expReward, monster.goldReward, monster.lore, monster.dropRarity, monster.colorHex)
                                             monstersList = monstersList.map { if (it.name == monster.name) updated else it }
                                             vm.saveAdminMonster(updated)
-                                            showToastMessage = "Đã tăng 200 HP cho ${monster.name}"
-                                        }
-                                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                                            showToastMessage = "Đã tăng 200 HP cho ${monster.name} (lên $newHp HP)"
+                                        },
+                                    contentAlignment = Alignment.Center
                                 ) {
-                                    Text("+200", color = C.Orange, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    Text("+200 HP", color = C.Yellow, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                 }
 
                                 Box(
                                     Modifier
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(C.Orange.copy(alpha = 0.2f))
-                                        .border(1.dp, C.Orange, RoundedCornerShape(8.dp))
-                                        .clickable { editingMonster = monster }
-                                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                                        .weight(1.3f)
+                                        .height(38.dp)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(C.Orange)
+                                        .clickable { editingMonster = monster },
+                                    contentAlignment = Alignment.Center
                                 ) {
-                                    Text("✏️ Sửa", color = C.Orange, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text("✏️", fontSize = 12.sp)
+                                        Spacer(Modifier.width(4.dp))
+                                        Text("Sửa Chi Tiết", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    }
                                 }
                             }
                         }
@@ -378,94 +541,147 @@ fun AdminScreen(vm: GameViewModel, onBack: () -> Unit) {
                 }
             }
 
-            // TAB 3: CẤU HÌNH BÀI TẬP AI (FR8.2: THRESHOLD)
+            // ==================== TAB 3: CẤU HÌNH GÓC AI ====================
             else if (selectedTab == "EXERCISES") {
                 item {
-                    Text("CẤU HÌNH NGƯỠNG GÓC KHỚP AI MEDIAPIPE", color = C.Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("NGƯỠNG GÓC KHỚP AI MEDIAPIPE (${exerciseConfigs.size})", color = C.Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                        Text("Độ chuẩn & Sát thương", color = C.Muted.copy(alpha = 0.7f), fontSize = 10.sp)
+                    }
                 }
 
                 items(exerciseConfigs) { ex ->
                     VCard {
-                        Column {
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text(ex.name, color = C.Text, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                StatBadge("${ex.code}", C.Blue)
+                        Column(Modifier.fillMaxWidth()) {
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                Text(ex.name, color = C.Text, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                                StatBadge(ex.code, C.Blue)
+                            }
+                            Spacer(Modifier.height(10.dp))
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                AdminMetricChip(Modifier.weight(1f), "Góc duỗi chuẩn", "${ex.extendAngle}°", C.Blue)
+                                AdminMetricChip(Modifier.weight(1f), "Góc gập chuẩn", "${ex.contractAngle}°", C.Pink)
                             }
                             Spacer(Modifier.height(6.dp))
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("Góc duỗi chuẩn: ${ex.extendAngle}°", color = C.Blue, fontSize = 12.sp)
-                                Text("Góc gập chuẩn: ${ex.contractAngle}°", color = C.Pink, fontSize = 12.sp)
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                AdminMetricChip(Modifier.weight(1f), "Sát thương/Rep", "${ex.damageFactor}x", C.Yellow)
+                                AdminMetricChip(Modifier.weight(1f), "Calo tiêu hao", "${ex.caloPerRep} kcal", C.Green)
                             }
-                            Spacer(Modifier.height(4.dp))
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("Sát thương/Rep: ${ex.damageFactor}x", color = C.Yellow, fontSize = 12.sp)
-                                Text("Calo/Rep: ${ex.caloPerRep} kcal", color = C.Green, fontSize = 12.sp)
-                            }
-                            Spacer(Modifier.height(8.dp))
+                            Spacer(Modifier.height(10.dp))
                             Box(
                                 Modifier
                                     .fillMaxWidth()
-                                    .clip(RoundedCornerShape(8.dp))
+                                    .height(38.dp)
+                                    .clip(RoundedCornerShape(10.dp))
                                     .background(C.Orange.copy(alpha = 0.15f))
-                                    .border(1.dp, C.Orange, RoundedCornerShape(8.dp))
-                                    .clickable { editingExercise = ex }
-                                    .padding(vertical = 6.dp),
+                                    .border(1.dp, C.Orange, RoundedCornerShape(10.dp))
+                                    .clickable { editingExercise = ex },
                                 contentAlignment = Alignment.Center
                             ) {
-                                Text("⚙️ Hiệu Chỉnh Ngưỡng Góc & Calo", color = C.Orange, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                Text("⚙️ Hiệu Chỉnh Góc Khớp & Calo", color = C.Orange, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
                 }
             }
 
-            // TAB 4: CẢNH BÁO GIAN LẬN (ANTI-CHEAT)
+            // ==================== TAB 4: GIAN LẬN (ANTI-CHEAT) ====================
             else if (selectedTab == "CHEATS") {
                 item {
-                    Text("PHÁT HIỆN GIAN LẬN THỜI GIAN THỰC (NFR1 & NFR4)", color = C.Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("CẢNH BÁO BẤT THƯỜNG / GIAN LẬN", color = C.Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                        Text("Kiểm duyệt trực tiếp", color = C.Muted.copy(alpha = 0.7f), fontSize = 10.sp)
+                    }
                 }
 
                 items(cheatAlerts) { alert ->
-                    VCard(border = if (alert.isResolved) C.Border else Color(0xFFEF4444).copy(alpha = 0.5f)) {
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(Modifier.weight(1f)) {
+                    VCard(border = if (alert.isResolved) C.Border else Color(0xFFEF4444).copy(alpha = 0.6f)) {
+                        Column(Modifier.fillMaxWidth()) {
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text("⚠️ ${alert.username}", color = if (alert.isResolved) C.Muted else Color(0xFFEF4444), fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                    Spacer(Modifier.width(6.dp))
+                                    Text(
+                                        if (alert.isResolved) "✅ ${alert.username}" else "🚨 ${alert.username}",
+                                        color = if (alert.isResolved) Color(0xFF6EE7B7) else Color(0xFFFF6B6B),
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 15.sp
+                                    )
+                                    Spacer(Modifier.width(8.dp))
                                     StatBadge(alert.exercise, C.Blue)
                                 }
-                                Text("Số rep: ${alert.reps} • Thời gian: ${alert.durationSeconds}s", color = C.Muted, fontSize = 11.sp)
-                                Text(alert.reason, color = C.Text, fontSize = 12.sp)
+                                if (alert.isResolved) {
+                                    StatBadge("ĐÃ XỬ LÝ", C.Green)
+                                } else {
+                                    StatBadge("NGUY CƠ CAO", Color(0xFFEF4444))
+                                }
                             }
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                "Hành vi: Tập ${alert.reps} reps trong vỏn vẹn ${alert.durationSeconds} giây",
+                                color = C.Text,
+                                fontSize = 12.sp
+                            )
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                "Phân tích AI: ${alert.reason}",
+                                color = C.Muted,
+                                fontSize = 11.sp
+                            )
 
                             if (!alert.isResolved) {
-                                Box(
-                                    Modifier
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(Color(0xFFEF4444))
-                                        .clickable {
-                                            val targetUser = usersList.firstOrNull { it.username.equals(alert.username, ignoreCase = true) }
-                                            if (targetUser != null) {
-                                                vm.setAdminUserLock(targetUser.id, targetUser.username, true, alert.reason)
-                                            } else {
-                                                scope.launch {
-                                                    com.example.vigil.network.ApiClient.banUser(alert.username, alert.reason)
+                                Spacer(Modifier.height(10.dp))
+                                Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0xFF252047)))
+                                Spacer(Modifier.height(10.dp))
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Box(
+                                        Modifier
+                                            .weight(1f)
+                                            .height(38.dp)
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(Color(0xFF1E193C))
+                                            .border(1.dp, Color(0xFF382F63), RoundedCornerShape(10.dp))
+                                            .clickable {
+                                                cheatAlerts = cheatAlerts.map { if (it.id == alert.id) it.copy(isResolved = true) else it }
+                                                showToastMessage = "Đã bỏ qua cảnh báo cho ${alert.username}."
+                                            },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text("Bỏ Qua", color = C.Muted, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    }
+
+                                    Box(
+                                        Modifier
+                                            .weight(1.5f)
+                                            .height(38.dp)
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(Color(0xFFEF4444))
+                                            .clickable {
+                                                val targetUser = usersList.firstOrNull { it.username.equals(alert.username, ignoreCase = true) }
+                                                if (targetUser != null) {
+                                                    vm.setAdminUserLock(targetUser.id, targetUser.username, true, alert.reason)
+                                                } else {
+                                                    vm.resolveAdminCheat(alert.username, alert.reason)
                                                 }
-                                            }
-                                            cheatAlerts = cheatAlerts.map { if (it.id == alert.id) it.copy(isResolved = true) else it }
-                                            usersList = vm.getAdminUsers()
-                                            showToastMessage = "Đã khóa vĩnh viễn tài khoản ${alert.username} do gian lận!"
-                                        }
-                                        .padding(horizontal = 10.dp, vertical = 6.dp)
-                                ) {
-                                    Text("Khóa Ngay", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                                cheatAlerts = cheatAlerts.map { if (it.id == alert.id) it.copy(isResolved = true) else it }
+                                                usersList = vm.getAdminUsers()
+                                                showToastMessage = "Đã khóa vĩnh viễn tài khoản ${alert.username} do gian lận!"
+                                            },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text("🚨 Khóa Nick Ngay", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    }
                                 }
-                            } else {
-                                StatBadge("ĐÃ XỬ LÝ", C.Green)
                             }
                         }
                     }
@@ -473,16 +689,250 @@ fun AdminScreen(vm: GameViewModel, onBack: () -> Unit) {
             }
         }
 
-        // Dialog Chỉnh Sửa Quái Vật (Zero-Hardcoding)
+        // --- 5. TOAST FEEDBACK NỔI BẬT ---
+        showToastMessage?.let { msg ->
+            LaunchedEffect(msg) {
+                kotlinx.coroutines.delay(2500)
+                showToastMessage = null
+            }
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0xFF1E1740))
+                    .border(1.dp, C.Orange.copy(alpha = 0.6f), RoundedCornerShape(12.dp))
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("⚡", fontSize = 14.sp)
+                    Spacer(Modifier.width(8.dp))
+                    Text(msg, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                }
+            }
+        }
+
+        // --- 6. DIALOG 1: CẤP QUYỀN ADMIN THEO TÊN NGƯỜI CHƠI TRONG CSDL ---
+        if (showingGrantAdminDialog) {
+            var targetUsername by remember { mutableStateOf("") }
+            var chosenRole by remember { mutableStateOf("Admin") }
+
+            val tfColors = OutlinedTextFieldDefaults.colors(
+                focusedTextColor = Color.White,
+                unfocusedTextColor = Color(0xFFE2E8F0),
+                focusedBorderColor = C.Orange,
+                unfocusedBorderColor = Color(0xFF475569),
+                focusedLabelColor = C.Orange,
+                unfocusedLabelColor = C.Muted,
+                cursorColor = C.Orange
+            )
+
+            AlertDialog(
+                onDismissRequest = { showingGrantAdminDialog = false },
+                shape = RoundedCornerShape(18.dp),
+                containerColor = Color(0xFF1B1530),
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("👑", fontSize = 20.sp)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Cấp Quyền Admin / Phân Role", color = C.Orange, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    }
+                },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text("Nhập chính xác tên tài khoản người chơi cần thăng cấp hoặc đổi vai trò:", color = C.Muted, fontSize = 12.sp)
+
+                        OutlinedTextField(
+                            value = targetUsername,
+                            onValueChange = { targetUsername = it },
+                            label = { Text("Tên tài khoản (Username)") },
+                            placeholder = { Text("Nhập nick người chơi...") },
+                            singleLine = true,
+                            colors = tfColors,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        // Gợi ý từ các tài khoản thực tế đang có trong CSDL (trừ Hachimi)
+                        val otherUsers = usersList.filter { !it.username.equals("Hachimi", ignoreCase = true) }
+                        if (otherUsers.isNotEmpty()) {
+                            Text("Hoặc chạm chọn nhanh từ tài khoản CSDL:", color = C.Muted, fontSize = 11.sp)
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                otherUsers.take(3).forEach { u ->
+                                    Box(
+                                        Modifier
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(if (targetUsername == u.username) C.Orange.copy(alpha = 0.25f) else Color(0xFF221A3E))
+                                            .border(1.dp, if (targetUsername == u.username) C.Orange else Color(0xFF3B2F63), RoundedCornerShape(8.dp))
+                                            .clickable { targetUsername = u.username }
+                                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                                    ) {
+                                        Text(u.username, color = if (targetUsername == u.username) C.Orange else Color.White, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                                    }
+                                }
+                            }
+                        }
+
+                        Text("Chọn vai trò mới:", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+
+                        val roles = listOf(
+                            Triple("Admin", "👑 ADMIN", "Quản trị viên toàn quyền hệ thống"),
+                            Triple("User", "🛡️ USER", "Người chơi tập luyện bình thường"),
+                            Triple("Moderator", "⚔️ MODERATOR", "Kiểm duyệt viên & Giám sát AI")
+                        )
+
+                        roles.forEach { (roleKey, roleLabel, roleDesc) ->
+                            val isSelected = chosenRole == roleKey
+                            Box(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(if (isSelected) C.Orange.copy(alpha = 0.15f) else Color(0xFF141029))
+                                    .border(1.dp, if (isSelected) C.Orange else Color(0xFF2E2657), RoundedCornerShape(10.dp))
+                                    .clickable { chosenRole = roleKey }
+                                    .padding(horizontal = 10.dp, vertical = 8.dp)
+                            ) {
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                    Column {
+                                        Text(roleLabel, color = if (isSelected) C.Orange else Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                        Text(roleDesc, color = C.Muted, fontSize = 10.sp)
+                                    }
+                                    if (isSelected) {
+                                        Text("✓", color = C.Orange, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            val trimmed = targetUsername.trim()
+                            if (trimmed.length < 3) {
+                                showToastMessage = "Tên tài khoản phải có ít nhất 3 ký tự!"
+                            } else {
+                                val success = vm.setAdminUserRoleByUsername(trimmed, chosenRole)
+                                if (success) {
+                                    usersList = vm.getAdminUsers()
+                                    showToastMessage = "Đã cập nhật vai trò của '$trimmed' thành $chosenRole!"
+                                    showingGrantAdminDialog = false
+                                } else {
+                                    showToastMessage = "Không thể cập nhật vai trò cho '$trimmed'!"
+                                }
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = C.Orange),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text("XÁC NHẬN CẤP QUYỀN", color = Color.White, fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showingGrantAdminDialog = false }) {
+                        Text("HỦY", color = C.Muted)
+                    }
+                }
+            )
+        }
+
+        // --- 7. DIALOG 2: ĐỔI VAI TRÒ CHO NGƯỜI CHƠI CỤ THỂ ---
+        editingRoleUser?.let { targetUser ->
+            var chosenRole by remember(targetUser) { mutableStateOf(targetUser.role) }
+
+            AlertDialog(
+                onDismissRequest = { editingRoleUser = null },
+                shape = RoundedCornerShape(18.dp),
+                containerColor = Color(0xFF1B1530),
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(targetUser.avatar, fontSize = 22.sp)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Đổi Vai Trò: ${targetUser.username}", color = C.Orange, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    }
+                },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text("Chọn vai trò mới bạn muốn gán cho ${targetUser.username}:", color = C.Muted, fontSize = 12.sp)
+
+                        val roles = listOf(
+                            Triple("Admin", "👑 ADMIN", "Quản trị viên toàn quyền hệ thống"),
+                            Triple("User", "🛡️ USER", "Người chơi tập luyện bình thường"),
+                            Triple("Moderator", "⚔️ MODERATOR", "Kiểm duyệt viên & Giám sát AI")
+                        )
+
+                        roles.forEach { (roleKey, roleLabel, roleDesc) ->
+                            val isSelected = chosenRole.equals(roleKey, ignoreCase = true)
+                            Box(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(if (isSelected) C.Orange.copy(alpha = 0.15f) else Color(0xFF141029))
+                                    .border(1.dp, if (isSelected) C.Orange else Color(0xFF2E2657), RoundedCornerShape(10.dp))
+                                    .clickable { chosenRole = roleKey }
+                                    .padding(horizontal = 10.dp, vertical = 8.dp)
+                            ) {
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                    Column {
+                                        Text(roleLabel, color = if (isSelected) C.Orange else Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                        Text(roleDesc, color = C.Muted, fontSize = 10.sp)
+                                    }
+                                    if (isSelected) {
+                                        Text("✓", color = C.Orange, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            vm.setAdminUserRole(targetUser.id, targetUser.username, chosenRole)
+                            usersList = vm.getAdminUsers()
+                            showToastMessage = "Đã cập nhật role của ${targetUser.username} thành $chosenRole!"
+                            editingRoleUser = null
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = C.Orange),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text("ÁP DỤNG VAI TRÒ", color = Color.White, fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { editingRoleUser = null }) {
+                        Text("HỦY", color = C.Muted)
+                    }
+                }
+            )
+        }
+
+        // --- 8. DIALOG CHỈNH SỬA QUÁI VẬT ---
         editingMonster?.let { monster ->
             var hpText by remember(monster) { mutableStateOf(monster.maxHp.toString()) }
             var expText by remember(monster) { mutableStateOf(monster.expReward.toString()) }
             var goldText by remember(monster) { mutableStateOf(monster.goldReward.toString()) }
 
+            val tfColors = OutlinedTextFieldDefaults.colors(
+                focusedTextColor = Color.White,
+                unfocusedTextColor = Color(0xFFE2E8F0),
+                focusedBorderColor = C.Orange,
+                unfocusedBorderColor = Color(0xFF475569),
+                focusedLabelColor = C.Orange,
+                unfocusedLabelColor = C.Muted,
+                cursorColor = C.Orange
+            )
+
             AlertDialog(
                 onDismissRequest = { editingMonster = null },
+                shape = RoundedCornerShape(18.dp),
+                containerColor = Color(0xFF1B1530),
                 title = {
-                    Text("🐉 Hiệu Chỉnh Quái Vật: ${monster.name}", color = C.Orange, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(monster.avatar, fontSize = 20.sp)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Hiệu Chỉnh: ${monster.name}", color = C.Orange, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    }
                 },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -490,19 +940,25 @@ fun AdminScreen(vm: GameViewModel, onBack: () -> Unit) {
                             value = hpText,
                             onValueChange = { hpText = it },
                             label = { Text("Máu tối đa (HP)") },
-                            singleLine = true
+                            singleLine = true,
+                            colors = tfColors,
+                            modifier = Modifier.fillMaxWidth()
                         )
                         OutlinedTextField(
                             value = expText,
                             onValueChange = { expText = it },
                             label = { Text("Thưởng EXP") },
-                            singleLine = true
+                            singleLine = true,
+                            colors = tfColors,
+                            modifier = Modifier.fillMaxWidth()
                         )
                         OutlinedTextField(
                             value = goldText,
                             onValueChange = { goldText = it },
                             label = { Text("Thưởng Vàng (Gold)") },
-                            singleLine = true
+                            singleLine = true,
+                            colors = tfColors,
+                            modifier = Modifier.fillMaxWidth()
                         )
                     }
                 },
@@ -518,7 +974,8 @@ fun AdminScreen(vm: GameViewModel, onBack: () -> Unit) {
                             showToastMessage = "Đã lưu cấu hình mới cho ${monster.name}!"
                             editingMonster = null
                         },
-                        colors = ButtonDefaults.buttonColors(containerColor = C.Orange)
+                        colors = ButtonDefaults.buttonColors(containerColor = C.Orange),
+                        shape = RoundedCornerShape(10.dp)
                     ) {
                         Text("LƯU THÔNG SỐ", color = Color.White, fontWeight = FontWeight.Bold)
                     }
@@ -527,22 +984,33 @@ fun AdminScreen(vm: GameViewModel, onBack: () -> Unit) {
                     TextButton(onClick = { editingMonster = null }) {
                         Text("HỦY", color = C.Muted)
                     }
-                },
-                containerColor = Color(0xFF1B1530)
+                }
             )
         }
 
-        // Dialog Chỉnh Sửa Ngưỡng Góc Bài Tập AI
+        // --- 9. DIALOG CHỈNH SỬA GÓC KHỚP AI ---
         editingExercise?.let { ex ->
             var extendText by remember(ex) { mutableStateOf(ex.extendAngle.toString()) }
             var contractText by remember(ex) { mutableStateOf(ex.contractAngle.toString()) }
             var damageText by remember(ex) { mutableStateOf(ex.damageFactor.toString()) }
             var caloText by remember(ex) { mutableStateOf(ex.caloPerRep.toString()) }
 
+            val tfColors = OutlinedTextFieldDefaults.colors(
+                focusedTextColor = Color.White,
+                unfocusedTextColor = Color(0xFFE2E8F0),
+                focusedBorderColor = C.Blue,
+                unfocusedBorderColor = Color(0xFF475569),
+                focusedLabelColor = C.Blue,
+                unfocusedLabelColor = C.Muted,
+                cursorColor = C.Blue
+            )
+
             AlertDialog(
                 onDismissRequest = { editingExercise = null },
+                shape = RoundedCornerShape(18.dp),
+                containerColor = Color(0xFF1B1530),
                 title = {
-                    Text("📐 Hiệu Chỉnh Ngưỡng Góc AI: ${ex.name}", color = C.Blue, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text("📐 Hiệu Chỉnh Ngưỡng: ${ex.name}", color = C.Blue, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -550,25 +1018,33 @@ fun AdminScreen(vm: GameViewModel, onBack: () -> Unit) {
                             value = extendText,
                             onValueChange = { extendText = it },
                             label = { Text("Góc duỗi chuẩn (°)") },
-                            singleLine = true
+                            singleLine = true,
+                            colors = tfColors,
+                            modifier = Modifier.fillMaxWidth()
                         )
                         OutlinedTextField(
                             value = contractText,
                             onValueChange = { contractText = it },
                             label = { Text("Góc gập chuẩn (°)") },
-                            singleLine = true
+                            singleLine = true,
+                            colors = tfColors,
+                            modifier = Modifier.fillMaxWidth()
                         )
                         OutlinedTextField(
                             value = damageText,
                             onValueChange = { damageText = it },
                             label = { Text("Hệ số sát thương/Rep") },
-                            singleLine = true
+                            singleLine = true,
+                            colors = tfColors,
+                            modifier = Modifier.fillMaxWidth()
                         )
                         OutlinedTextField(
                             value = caloText,
                             onValueChange = { caloText = it },
                             label = { Text("Calo tiêu hao mỗi rep (kcal)") },
-                            singleLine = true
+                            singleLine = true,
+                            colors = tfColors,
+                            modifier = Modifier.fillMaxWidth()
                         )
                     }
                 },
@@ -585,7 +1061,8 @@ fun AdminScreen(vm: GameViewModel, onBack: () -> Unit) {
                             showToastMessage = "Đã lưu ngưỡng góc AI cho bài tập ${ex.name}!"
                             editingExercise = null
                         },
-                        colors = ButtonDefaults.buttonColors(containerColor = C.Blue)
+                        colors = ButtonDefaults.buttonColors(containerColor = C.Blue),
+                        shape = RoundedCornerShape(10.dp)
                     ) {
                         Text("LƯU CẤU HÌNH GÓC", color = Color.White, fontWeight = FontWeight.Bold)
                     }
@@ -594,29 +1071,43 @@ fun AdminScreen(vm: GameViewModel, onBack: () -> Unit) {
                     TextButton(onClick = { editingExercise = null }) {
                         Text("HỦY", color = C.Muted)
                     }
-                },
-                containerColor = Color(0xFF1B1530)
+                }
             )
         }
+    }
+}
 
-        // Toast feedback
-        showToastMessage?.let { msg ->
-            LaunchedEffect(msg) {
-                kotlinx.coroutines.delay(2500)
-                showToastMessage = null
-            }
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(top = 10.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(Color(0xFF1F1B3E))
-                    .border(1.dp, C.Orange, RoundedCornerShape(10.dp))
-                    .padding(12.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(msg, color = C.Text, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-            }
+@Composable
+private fun AdminKpiCard(modifier: Modifier = Modifier, title: String, value: String, valueColor: Color) {
+    Box(
+        modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0xFF16122E))
+            .border(1.dp, Color(0xFF26204E), RoundedCornerShape(12.dp))
+            .padding(vertical = 10.dp, horizontal = 4.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(title, color = C.Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+            Spacer(Modifier.height(4.dp))
+            Text(value, color = valueColor, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
+        }
+    }
+}
+
+@Composable
+private fun AdminMetricChip(modifier: Modifier = Modifier, label: String, value: String, color: Color) {
+    Box(
+        modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color(0xFF141029))
+            .border(1.dp, Color(0xFF26204E), RoundedCornerShape(8.dp))
+            .padding(horizontal = 8.dp, vertical = 6.dp)
+    ) {
+        Column {
+            Text(label, color = C.Muted, fontSize = 9.sp)
+            Spacer(Modifier.height(2.dp))
+            Text(value, color = color, fontSize = 12.sp, fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -628,6 +1119,7 @@ fun AdminAccessDeniedScreen(username: String, onBack: () -> Unit) {
             .fillMaxSize()
             .background(C.Bg)
             .statusBarsPadding()
+            .navigationBarsPadding()
             .padding(24.dp),
         contentAlignment = Alignment.Center
     ) {

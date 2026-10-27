@@ -10,6 +10,10 @@ const PORT = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(express.json());
+app.use((req, res, next) => {
+    console.log(`[API Log ${new Date().toLocaleTimeString()}] ${req.method} ${req.url}`);
+    next();
+});
 app.use('/admin', express.static(path.join(__dirname, 'admin')));
 app.use('/css', express.static(path.join(__dirname, 'admin', 'css')));
 app.use('/js', express.static(path.join(__dirname, 'admin', 'js')));
@@ -29,7 +33,7 @@ let useFallback = false;
 
 let memoryDB = {
     users: [
-        { id: 1, username: 'Hachimi', password: '123456', avatar: '🦊', gold: 0, gems: 0, xp: 80, level: 2, streak: 3, total_reps: 45, stage: 2 }
+        { id: 1, username: 'Hachimi', password: '123456', avatar: '🦊', gold: 0, gems: 0, xp: 80, level: 2, streak: 3, total_reps: 45, stage: 2, role: 'Admin', status: 1 }
     ],
     items: [],
     inventory: [{ id: 1, user_id: 1, item_id: 'helm_bronze', is_equipped: 1 }],
@@ -1619,6 +1623,68 @@ app.post('/api/admin/users/lock', async (req, res) => {
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
+});
+
+// Cập nhật vai trò Role của người chơi (User <-> Admin)
+app.post('/api/admin/users/update', async (req, res) => {
+    const { username, role } = req.body;
+    try {
+        const targetRole = role || 'User';
+        if (!useFallback) {
+            await pool.query('UPDATE users SET role = ? WHERE LOWER(username) = LOWER(?)', [targetRole, username]);
+        } else {
+            const u = memoryDB.users.find(x => x.username.toLowerCase() === (username || '').toLowerCase());
+            if (u) {
+                u.role = targetRole;
+            } else {
+                memoryDB.users.push({
+                    id: memoryDB.users.length + 1,
+                    username,
+                    role: targetRole,
+                    avatar: '🧑‍🎤',
+                    status: 1,
+                    level: 1,
+                    gold: 100,
+                    gems: 0,
+                    xp: 0,
+                    streak: 1,
+                    total_reps: 0,
+                    stage: 1
+                });
+            }
+        }
+        console.log(`[Admin API] ✅ Đã cập nhật quyền cho '${username}' -> '${targetRole}'`);
+        res.json({ success: true, message: `Đã cập nhật role của ${username} thành ${targetRole}` });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Khóa tài khoản do nghi vấn gian lận
+app.post('/api/admin/anti-cheat/ban', async (req, res) => {
+    const { username, reason } = req.body;
+    try {
+        if (!useFallback) {
+            await pool.query('UPDATE users SET status = 0, lock_reason = ? WHERE LOWER(username) = LOWER(?)', [reason || 'Khóa bởi Admin', username]);
+        } else {
+            const u = memoryDB.users.find(x => x.username.toLowerCase() === (username || '').toLowerCase());
+            if (u) {
+                u.status = 0;
+                u.lock_reason = reason || 'Khóa bởi Admin';
+            }
+        }
+        console.log(`[Admin Anti-Cheat] 🚫 Đã khóa tài khoản '${username}'. Lý do: ${reason}`);
+        res.json({ success: true, message: `Đã khóa tài khoản ${username} thành công!` });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Lưu cấu hình quái vật từ Admin
+app.post('/api/admin/monsters/save', async (req, res) => {
+    const { id, name, maxHp, expReward, goldReward } = req.body;
+    console.log(`[Admin API] 🐉 Cập nhật quái vật ${name}: HP=${maxHp}, EXP=${expReward}, Gold=${goldReward}`);
+    res.json({ success: true, message: `Đã cập nhật quái vật ${name} thành công!` });
 });
 
 // Khởi động server

@@ -16,3 +16,5 @@ server/node_modules/
 *.db-journal
 __pycache__/
 *.pyc
+*.code-workspace
+.vscode/
