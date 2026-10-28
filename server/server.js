@@ -1687,6 +1687,35 @@ app.post('/api/admin/monsters/save', async (req, res) => {
     res.json({ success: true, message: `Đã cập nhật quái vật ${name} thành công!` });
 });
 
+// =========================================================================
+// 13. PVP SOLO 1v1 ARENA API ENDPOINTS
+// =========================================================================
+if (!memoryDB.pvp_matches) memoryDB.pvp_matches = [];
+
+app.post('/api/pvp/finish', async (req, res) => {
+    const { player1Name, player2Name, exercise, durationSec, p1Reps, p1Score, p2Reps, p2Score, winnerName } = req.body;
+    const match = {
+        id: memoryDB.pvp_matches.length + 1,
+        player1Name,
+        player2Name,
+        exercise,
+        durationSec,
+        p1Reps,
+        p1Score,
+        p2Reps,
+        p2Score,
+        winnerName,
+        createdAt: new Date().toISOString()
+    };
+    memoryDB.pvp_matches.unshift(match);
+    console.log(`[PvP Arena] ⚔️ Trận Solo ${exercise} (${durationSec}s): ${player1Name} (${p1Score}đ) vs ${player2Name} (${p2Score}đ) -> Thắng: ${winnerName}`);
+    res.json({ success: true, match });
+});
+
+app.get('/api/pvp/history', (req, res) => {
+    res.json({ success: true, matches: memoryDB.pvp_matches.slice(0, 20) });
+});
+
 // Khởi động server
 initDatabase().then(() => {
     app.listen(PORT, '0.0.0.0', () => {

@@ -68,6 +68,7 @@ fun AppRoot(vm: GameViewModel = viewModel()) {
                     composable("guild") { GuildScreen(vm, nav) }
                     composable("hero") { HeroScreen(vm, nav) }
                     composable("challenges") { ChallengesScreen(vm) { nav.popBackStack() } }
+                    composable("pvp") { PvpArenaScreen(vm) { nav.popBackStack() } }
                     composable("workout/{ex}") { backStack ->
                         val exName = backStack.arguments?.getString("ex") ?: Exercise.PUSHUP.name
                         val ex = try { Exercise.valueOf(exName) } catch (e: Exception) { Exercise.PUSHUP }

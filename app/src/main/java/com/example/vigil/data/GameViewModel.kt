@@ -31,6 +31,8 @@ import com.example.vigil.model.Monster
 import com.example.vigil.model.AdminUserEntry
 import com.example.vigil.model.CheatAlertItem
 import com.example.vigil.model.ExerciseConfigItem
+import com.example.vigil.model.PvpMatchRecord
+import com.example.vigil.model.PvpOpponent
 import com.example.vigil.data.repository.AdminRepository
 import com.example.vigil.network.ApiClient
 import com.example.vigil.pose.Exercise
@@ -94,6 +96,10 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
     // Lịch sử tập luyện chi tiết (Detailed Workout History & Stats)
     var workoutHistory by mutableStateOf<List<WorkoutHistoryEntry>>(emptyList())
     var workoutStats by mutableStateOf(WorkoutSummaryStats())
+
+    // Đấu Trường Solo PvP 1v1 (2 Người Chơi Đua Điểm Theo Thời Gian)
+    var pvpOpponents by mutableStateOf<List<PvpOpponent>>(emptyList())
+    var pvpHistory by mutableStateOf<List<PvpMatchRecord>>(emptyList())
 
     // Điểm danh hàng tuần (Weekly Check-in) & Nhiệm vụ (Quests)
     var weeklyCheckInRewards by mutableStateOf<List<DailyCheckInReward>>(emptyList())
@@ -293,6 +299,10 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
         // Nạp lịch sử tập luyện & thống kê
         workoutHistory = db.getWorkoutHistory(currentUserId)
         workoutStats = db.getWorkoutStats(currentUserId)
+
+        // Nạp danh sách đối thủ PvP từ CSDL và lịch sử đấu PvP 1v1
+        pvpOpponents = db.getPvpOpponents(currentUserId)
+        pvpHistory = db.getPvpHistory(currentUserId)
 
         // Nạp điểm danh tuần & nhiệm vụ
         val (checkInList, canClaim) = db.getWeeklyCheckInRewards(currentUserId)
@@ -935,4 +945,52 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun weekReps() = last7Days().sumOf { it.second }
+
+    // =========================================================================
+    // ĐẤU TRƯỜNG SOLO PvP (2 NGƯỜI CHƠI SOLO TÍNH ĐIỂM TRONG THỜI GIAN NHẤT ĐỊNH)
+    // =========================================================================
+
+    fun refreshPvpData() {
+        pvpOpponents = db.getPvpOpponents(currentUserId)
+        pvpHistory = db.getPvpHistory(currentUserId)
+    }
+
+    fun finishPvpMatch(
+        player2Name: String,
+        exercise: Exercise,
+        durationSec: Int,
+        p1Reps: Int,
+        p1Score: Int,
+        p2Reps: Int,
+        p2Score: Int
+    ): PvpMatchRecord {
+        val cleanP2 = player2Name.trim().ifEmpty { "Người Chơi 2" }
+        val record = db.recordPvpMatch(
+            currentUserId,
+            name,
+            cleanP2,
+            exercise.name,
+            durationSec,
+            p1Reps,
+            p1Score,
+            p2Reps,
+            p2Score
+        )
+        loadDataFromSql()
+
+        ioLaunch {
+            ApiClient.savePvpMatch(
+                name,
+                cleanP2,
+                exercise.name,
+                durationSec,
+                p1Reps,
+                p1Score,
+                p2Reps,
+                p2Score,
+                record.winnerName
+            )
+        }
+        return record
+    }
 }

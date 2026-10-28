@@ -21,6 +21,8 @@ import com.example.vigil.model.Item;
 import com.example.vigil.model.ItemSlot;
 import com.example.vigil.model.LeaderboardEntry;
 import com.example.vigil.model.OutgoingGuildInvitation;
+import com.example.vigil.model.PvpMatchRecord;
+import com.example.vigil.model.PvpOpponent;
 import com.example.vigil.model.QuestItem;
 import com.example.vigil.model.Rarity;
 import com.example.vigil.model.UserProfile;
@@ -47,7 +49,7 @@ import kotlin.Pair;
 public class VigilSqlDb extends SQLiteOpenHelper {
 
     public static final String DATABASE_NAME = "vigil_app.db";
-    public static final int DATABASE_VERSION = 7;
+    public static final int DATABASE_VERSION = 8;
 
 
     private static volatile VigilSqlDb INSTANCE;
@@ -84,6 +86,25 @@ public class VigilSqlDb extends SQLiteOpenHelper {
             db.execSQL("UPDATE users SET role = 'Admin' WHERE LOWER(username) = 'hachimi';");
             // Xóa sạch các tài khoản mẫu rác trước đó, chỉ giữ lại người chơi thực sự tạo trong CSDL
             db.execSQL("DELETE FROM users WHERE username IN ('GiaHuy_Fit', 'ThanhTung_Pro', 'MinhAnh_Gym', 'IronSpartan', 'SpeedyHacker99', 'admin', 'ShadowBlade');");
+        } catch (Exception ignored) {}
+        try {
+            // 16. Bảng pvp_matches (Lịch sử Đấu Trường Solo PvP 1v1 giữa 2 người chơi)
+            db.execSQL("CREATE TABLE IF NOT EXISTS pvp_matches (" +
+                    "id INTEGER PRIMARY KEY AUTOINCREMENT, " +
+                    "player1_id INTEGER NOT NULL, " +
+                    "player1_name TEXT NOT NULL, " +
+                    "player2_name TEXT NOT NULL, " +
+                    "exercise TEXT NOT NULL, " +
+                    "duration_sec INTEGER NOT NULL, " +
+                    "p1_reps INTEGER NOT NULL DEFAULT 0, " +
+                    "p1_score INTEGER NOT NULL DEFAULT 0, " +
+                    "p2_reps INTEGER NOT NULL DEFAULT 0, " +
+                    "p2_score INTEGER NOT NULL DEFAULT 0, " +
+                    "winner_name TEXT NOT NULL, " +
+                    "gold_reward INTEGER NOT NULL DEFAULT 0, " +
+                    "xp_reward INTEGER NOT NULL DEFAULT 0, " +
+                    "created_at TEXT" +
+                    ");");
         } catch (Exception ignored) {}
     }
 
@@ -2599,6 +2620,172 @@ public class VigilSqlDb extends SQLiteOpenHelper {
             return new Pair<>(true, "🔥 Tiếng gầm thét rung chuyển! " + tpl[1] + " đã giáng lâm khiêu chiến bang hội!");
         }
         return new Pair<>(false, "Không thể triệu hồi Boss!");
+    }
+
+    // =========================================================================
+    // ĐẤU TRƯỜNG SOLO PvP (1 VS 1 TÍNH ĐIỂM TRONG KHOẢNG THỜI GIAN NHẤT ĐỊNH)
+    // =========================================================================
+
+    public List<PvpOpponent> getPvpOpponents(int currentUserId) {
+        List<PvpOpponent> list = new ArrayList<>();
+        SQLiteDatabase db = getReadableDatabase();
+        Cursor c = db.rawQuery(
+                "SELECT id, username, avatar, level, total_reps FROM users WHERE id != ? AND status != 0 ORDER BY level DESC, total_reps DESC",
+                new String[]{String.valueOf(currentUserId)}
+        );
+        while (c.moveToNext()) {
+            int id = c.getInt(0);
+            String uname = c.getString(1);
+            String avt = c.getString(2) != null ? c.getString(2) : "🧑‍🎤";
+            int lvl = Math.max(1, c.getInt(3));
+            int dmg = 25 + lvl * 28;
+            list.add(new PvpOpponent(id, uname, avt, lvl, dmg, true));
+        }
+        c.close();
+
+        // Nếu trong CSDL chưa có người chơi thứ 2 nào, bổ sung đấu thủ sảnh PvP để người chơi luôn có thể test Solo ngay
+        if (list.isEmpty()) {
+            list.add(new PvpOpponent(901, "Kaito_Solo", "🥷", 3, 110, false));
+            list.add(new PvpOpponent(902, "Valkyrie_Fit", "👑", 5, 165, false));
+        }
+        return list;
+    }
+
+    public PvpMatchRecord recordPvpMatch(
+            int player1Id,
+            String player1Name,
+            String player2Name,
+            String exercise,
+            int durationSec,
+            int p1Reps,
+            int p1Score,
+            int p2Reps,
+            int p2Score
+    ) {
+        SQLiteDatabase db = getWritableDatabase();
+        String winnerName;
+        int goldReward;
+        int xpReward;
+
+        if (p1Score > p2Score) {
+            winnerName = player1Name;
+            goldReward = 45 + (p1Reps * 2);
+            xpReward = 90 + (p1Reps * 3);
+        } else if (p2Score > p1Score) {
+            winnerName = player2Name;
+            goldReward = 15 + p1Reps;
+            xpReward = 35 + p1Reps;
+        } else {
+            winnerName = "HÒA";
+            goldReward = 25 + p1Reps;
+            xpReward = 55 + (p1Reps * 2);
+        }
+
+        String nowStr = LocalDate.now().toString();
+        ContentValues cv = new ContentValues();
+        cv.put("player1_id", player1Id);
+        cv.put("player1_name", player1Name);
+        cv.put("player2_name", player2Name);
+        cv.put("exercise", exercise);
+        cv.put("duration_sec", durationSec);
+        cv.put("p1_reps", p1Reps);
+        cv.put("p1_score", p1Score);
+        cv.put("p2_reps", p2Reps);
+        cv.put("p2_score", p2Score);
+        cv.put("winner_name", winnerName);
+        cv.put("gold_reward", goldReward);
+        cv.put("xp_reward", xpReward);
+        cv.put("created_at", nowStr);
+        long rowId = db.insert("pvp_matches", null, cv);
+
+        // Cộng thưởng Vàng, XP và tổng Rep cho người chơi 1 trong bảng users
+        Cursor uCur = db.rawQuery("SELECT gold, xp, level, total_reps FROM users WHERE id = ?", new String[]{String.valueOf(player1Id)});
+        if (uCur.moveToFirst()) {
+            int curGold = uCur.getInt(0) + goldReward;
+            int curXp = uCur.getInt(1) + xpReward;
+            int curLevel = Math.max(1, uCur.getInt(2));
+            int curReps = uCur.getInt(3) + p1Reps;
+            while (curXp >= (80 + curLevel * 160)) {
+                curXp -= (80 + curLevel * 160);
+                curLevel++;
+            }
+            ContentValues uCv = new ContentValues();
+            uCv.put("gold", curGold);
+            uCv.put("xp", curXp);
+            uCv.put("level", curLevel);
+            uCv.put("total_reps", curReps);
+            uCv.put("last_workout_date", nowStr);
+            db.update("users", uCv, "id = ?", new String[]{String.valueOf(player1Id)});
+        }
+        uCur.close();
+
+        // Nếu người chơi 2 là tài khoản thực trong CSDL và thắng trận, cộng thưởng cho người chơi 2
+        if (p2Score >= p1Score) {
+            Cursor p2Cur = db.rawQuery("SELECT id, gold, xp, level, total_reps FROM users WHERE LOWER(username) = LOWER(?)", new String[]{player2Name.trim()});
+            if (p2Cur.moveToFirst()) {
+                int p2Id = p2Cur.getInt(0);
+                int p2Gold = p2Cur.getInt(1) + (p2Score > p1Score ? 45 + p2Reps * 2 : 25 + p2Reps);
+                int p2Xp = p2Cur.getInt(2) + (p2Score > p1Score ? 90 + p2Reps * 3 : 55 + p2Reps * 2);
+                int p2Level = Math.max(1, p2Cur.getInt(3));
+                int p2TotalReps = p2Cur.getInt(4) + p2Reps;
+                while (p2Xp >= (80 + p2Level * 160)) {
+                    p2Xp -= (80 + p2Level * 160);
+                    p2Level++;
+                }
+                ContentValues p2Cv = new ContentValues();
+                p2Cv.put("gold", p2Gold);
+                p2Cv.put("xp", p2Xp);
+                p2Cv.put("level", p2Level);
+                p2Cv.put("total_reps", p2TotalReps);
+                db.update("users", p2Cv, "id = ?", new String[]{String.valueOf(p2Id)});
+            }
+            p2Cur.close();
+        }
+
+        return new PvpMatchRecord(
+                (int) rowId,
+                player1Name,
+                player2Name,
+                exercise,
+                durationSec,
+                p1Reps,
+                p1Score,
+                p2Reps,
+                p2Score,
+                winnerName,
+                goldReward,
+                xpReward,
+                nowStr
+        );
+    }
+
+    public List<PvpMatchRecord> getPvpHistory(int userId) {
+        List<PvpMatchRecord> list = new ArrayList<>();
+        SQLiteDatabase db = getReadableDatabase();
+        Cursor c = db.rawQuery(
+                "SELECT id, player1_name, player2_name, exercise, duration_sec, p1_reps, p1_score, p2_reps, p2_score, winner_name, gold_reward, xp_reward, created_at " +
+                "FROM pvp_matches ORDER BY id DESC LIMIT 15",
+                null
+        );
+        while (c.moveToNext()) {
+            list.add(new PvpMatchRecord(
+                    c.getInt(0),
+                    c.getString(1),
+                    c.getString(2),
+                    c.getString(3),
+                    c.getInt(4),
+                    c.getInt(5),
+                    c.getInt(6),
+                    c.getInt(7),
+                    c.getInt(8),
+                    c.getString(9),
+                    c.getInt(10),
+                    c.getInt(11),
+                    c.getString(12) != null ? c.getString(12) : ""
+            ));
+        }
+        c.close();
+        return list;
     }
 }
 

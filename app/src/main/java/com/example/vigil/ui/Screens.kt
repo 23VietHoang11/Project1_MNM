@@ -116,7 +116,14 @@ fun TodayScreen(vm: GameViewModel, nav: NavController) {
         val currentMonster = remember(vm.stage) { AdventureData.getMonsterByStage(vm.stage) }
         Spacer(Modifier.height(14.dp))
         VCard {
-            Text("ẢI HIỆN TẠI · CHẶNG ${vm.stage}", color = C.Pink, fontSize = 12.sp, letterSpacing = 2.sp, fontWeight = FontWeight.Bold)
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("ẢI HIỆN TẠI · CHẶNG ${vm.stage}", color = C.Pink, fontSize = 12.sp, letterSpacing = 2.sp, fontWeight = FontWeight.Bold)
+                Chip("⚡ Solo PvP 1v1", C.Orange) { nav.navigate("pvp") }
+            }
             Spacer(Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(currentMonster.avatar, fontSize = 38.sp)
@@ -141,6 +148,47 @@ fun TodayScreen(vm: GameViewModel, nav: NavController) {
         }
 
 
+
+        // ĐẤU TRƯỜNG SOLO PvP (2 NGƯỜI CHƠI ĐUA ĐIỂM TRONG KHOẢNG THỜI GIAN NHẤT ĐỊNH)
+        Spacer(Modifier.height(14.dp))
+        VCard(border = C.Orange, onClick = { nav.navigate("pvp") }) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "ĐẤU TRƯỜNG 1 VS 1 · ĐUA ĐIỂM THEO GIỜ",
+                    color = C.Yellow,
+                    fontSize = 12.sp,
+                    letterSpacing = 1.5.sp,
+                    fontWeight = FontWeight.Black
+                )
+                Chip("⏱️ 15s - 90s", C.Orange)
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("⚔️", fontSize = 36.sp)
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        "Solo PvP 2 Người Chơi",
+                        color = C.Text,
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Black
+                    )
+                    Text(
+                        "2 người chơi solo tính điểm trong 1 khoảng thời gian nhất định",
+                        color = C.Muted,
+                        fontSize = 12.sp
+                    )
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+            BigButton("⚡ Vào Đấu Trường Solo Ngay", C.Orange, Color.White) {
+                nav.navigate("pvp")
+            }
+        }
 
         SectionLabel("Luyện tập tự do")
         val list = listOf(
@@ -189,7 +237,10 @@ fun AdventureScreen(vm: GameViewModel, nav: NavController) {
                 Text("CHIẾN DỊCH THÁM HIỂM", color = C.Muted, fontSize = 12.sp, letterSpacing = 2.sp, fontWeight = FontWeight.Bold)
                 Text("Bản Đồ Thế Giới", color = C.Text, fontSize = 32.sp, fontWeight = FontWeight.Black)
             }
-            Chip("Chặng ${vm.stage}", C.Yellow)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Chip("⚡ Solo PvP", C.Orange) { nav.navigate("pvp") }
+                Chip("Chặng ${vm.stage}", C.Yellow)
+            }
         }
 
 

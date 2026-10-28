@@ -668,5 +668,38 @@ public class ApiClient {
             return false;
         }
     }
+
+    public static boolean savePvpMatch(
+            String player1Name,
+            String player2Name,
+            String exercise,
+            int durationSec,
+            int p1Reps,
+            int p1Score,
+            int p2Reps,
+            int p2Score,
+            String winnerName
+    ) {
+        try {
+            JsonObject body = new JsonObject();
+            body.addProperty("player1Name", player1Name);
+            body.addProperty("player2Name", player2Name);
+            body.addProperty("exercise", exercise);
+            body.addProperty("durationSec", durationSec);
+            body.addProperty("p1Reps", p1Reps);
+            body.addProperty("p1Score", p1Score);
+            body.addProperty("p2Reps", p2Reps);
+            body.addProperty("p2Score", p2Score);
+            body.addProperty("winnerName", winnerName);
+            RequestBody reqBody = RequestBody.create(jsonMediaType, body.toString());
+
+            Request req = new Request.Builder().url(baseUrl + "/api/pvp/finish").post(reqBody).build();
+            try (Response res = client.newCall(req).execute()) {
+                return res.isSuccessful();
+            }
+        } catch (Exception e) {
+            return false;
+        }
+    }
 }
 
