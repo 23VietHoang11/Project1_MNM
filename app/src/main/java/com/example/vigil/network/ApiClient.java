@@ -701,5 +701,46 @@ public class ApiClient {
             return false;
         }
     }
+
+    public static boolean saveAdminItem(Item item) {
+        try {
+            JsonObject body = new JsonObject();
+            body.addProperty("id", item.getId());
+            body.addProperty("name", item.getName());
+            body.addProperty("slot", item.getSlot().name());
+            body.addProperty("rarity", item.getRarity().name());
+            body.addProperty("priceGold", item.getPriceGold());
+            body.addProperty("priceGems", item.getPriceGems());
+            body.addProperty("bonusStr", item.getBonusStr());
+            body.addProperty("bonusEnd", item.getBonusEnd());
+            body.addProperty("bonusPre", item.getBonusPre());
+            body.addProperty("bonusLuck", item.getBonusLuck());
+            body.addProperty("description", item.getDescription());
+            body.addProperty("icon", item.getIcon());
+            RequestBody reqBody = RequestBody.create(jsonMediaType, body.toString());
+
+            Request req = new Request.Builder().url(baseUrl + "/api/admin/items/save").post(reqBody).build();
+            try (Response res = client.newCall(req).execute()) {
+                return res.isSuccessful();
+            }
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    public static boolean deleteAdminItem(String itemId) {
+        try {
+            JsonObject body = new JsonObject();
+            body.addProperty("id", itemId);
+            RequestBody reqBody = RequestBody.create(jsonMediaType, body.toString());
+
+            Request req = new Request.Builder().url(baseUrl + "/api/admin/items/delete").post(reqBody).build();
+            try (Response res = client.newCall(req).execute()) {
+                return res.isSuccessful();
+            }
+        } catch (Exception e) {
+            return false;
+        }
+    }
 }
 

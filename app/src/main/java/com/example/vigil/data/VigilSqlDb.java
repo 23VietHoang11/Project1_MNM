@@ -2787,5 +2787,52 @@ public class VigilSqlDb extends SQLiteOpenHelper {
         c.close();
         return list;
     }
+
+    // =========================================================================
+    // QUẢN LÝ VẬT PHẨM CỬA HÀNG DÀNH CHO ADMIN (ADMIN SHOP ITEM CRUD)
+    // =========================================================================
+
+    public boolean saveShopItem(Item item) {
+        if (item == null || item.getId() == null || item.getId().trim().isEmpty()) {
+            return false;
+        }
+        SQLiteDatabase db = getWritableDatabase();
+        ContentValues cv = new ContentValues();
+        cv.put("id", item.getId().trim());
+        cv.put("name", item.getName().trim());
+        cv.put("slot", item.getSlot().name());
+        cv.put("rarity", item.getRarity().name());
+        cv.put("price_gold", Math.max(0, item.getPriceGold()));
+        cv.put("price_gems", Math.max(0, item.getPriceGems()));
+        cv.put("bonus_str", Math.max(0, item.getBonusStr()));
+        cv.put("bonus_end", Math.max(0, item.getBonusEnd()));
+        cv.put("bonus_pre", Math.max(0, item.getBonusPre()));
+        cv.put("bonus_luck", Math.max(0, item.getBonusLuck()));
+        cv.put("description", item.getDescription() != null ? item.getDescription() : "");
+        cv.put("icon", item.getIcon() != null && !item.getIcon().isEmpty() ? item.getIcon() : "⚔️");
+        long rowId = db.insertWithOnConflict("items", null, cv, SQLiteDatabase.CONFLICT_REPLACE);
+        return rowId != -1L;
+    }
+
+    public boolean deleteShopItem(String itemId) {
+        if (itemId == null || itemId.trim().isEmpty()) {
+            return false;
+        }
+        SQLiteDatabase db = getWritableDatabase();
+        db.beginTransaction();
+        try {
+            db.delete("user_inventory", "item_id = ?", new String[]{itemId.trim()});
+            int deleted = db.delete("items", "id = ?", new String[]{itemId.trim()});
+            db.setTransactionSuccessful();
+            return deleted > 0;
+        } finally {
+            db.endTransaction();
+        }
+    }
+
+    public void resetDefaultShopItems() {
+        SQLiteDatabase db = getWritableDatabase();
+        seedItems(db);
+    }
 }
 

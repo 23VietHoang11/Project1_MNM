@@ -422,6 +422,32 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
     fun getAdminCheatAlerts(): List<CheatAlertItem> = adminRepository.getCheatAlerts()
     fun resolveAdminCheat(username: String, reason: String) = adminRepository.resolveCheatAlert(username, reason)
 
+    fun getAdminItems(): List<Item> = adminRepository.getShopItems()
+
+    fun saveAdminItem(item: Item): Boolean {
+        val ok = adminRepository.saveShopItem(item)
+        if (ok) {
+            shopItems = db.getAllItems()
+            inventory = db.getInventory(currentUserId)
+        }
+        return ok
+    }
+
+    fun deleteAdminItem(itemId: String): Boolean {
+        val ok = adminRepository.deleteShopItem(itemId)
+        if (ok) {
+            shopItems = db.getAllItems()
+            inventory = db.getInventory(currentUserId)
+        }
+        return ok
+    }
+
+    fun resetAdminDefaultItems() {
+        adminRepository.resetDefaultShopItems()
+        shopItems = db.getAllItems()
+        inventory = db.getInventory(currentUserId)
+    }
+
     // =========================================================================
     // HỆ THỐNG BẠN BÈ & BẢNG XẾP HẠNG THẾ GIỚI
     // =========================================================================

@@ -1687,6 +1687,44 @@ app.post('/api/admin/monsters/save', async (req, res) => {
     res.json({ success: true, message: `Đã cập nhật quái vật ${name} thành công!` });
 });
 
+// Thêm / Sửa vật phẩm Cửa hàng từ Admin
+app.post('/api/admin/items/save', async (req, res) => {
+    const { id, name, slot, rarity, priceGold, priceGems, bonusStr, bonusEnd, bonusPre, bonusLuck, description, icon } = req.body;
+    if (!id || !name) {
+        return res.status(400).json({ error: 'Thiếu mã hoặc tên vật phẩm' });
+    }
+    const itemObj = {
+        id,
+        name,
+        slot: slot || 'WEAPON',
+        rarity: rarity || 'COMMON',
+        price_gold: Number(priceGold) || 0,
+        price_gems: Number(priceGems) || 0,
+        bonus_str: Number(bonusStr) || 0,
+        bonus_end: Number(bonusEnd) || 0,
+        bonus_pre: Number(bonusPre) || 0,
+        bonus_luck: Number(bonusLuck) || 0,
+        description: description || '',
+        icon: icon || '⚔️'
+    };
+    const existingIdx = memoryDB.items.findIndex(i => i.id === id);
+    if (existingIdx >= 0) {
+        memoryDB.items[existingIdx] = itemObj;
+    } else {
+        memoryDB.items.push(itemObj);
+    }
+    console.log(`[Admin API] 🛒 Lưu vật phẩm Cửa hàng: ${name} (${id}) - Giá: ${itemObj.price_gold} Vàng`);
+    res.json({ success: true, item: itemObj });
+});
+
+// Xóa vật phẩm Cửa hàng từ Admin
+app.post('/api/admin/items/delete', async (req, res) => {
+    const { id } = req.body;
+    memoryDB.items = memoryDB.items.filter(i => i.id !== id);
+    console.log(`[Admin API] 🗑️ Đã xóa vật phẩm Cửa hàng: ${id}`);
+    res.json({ success: true });
+});
+
 // =========================================================================
 // 13. PVP SOLO 1v1 ARENA API ENDPOINTS
 // =========================================================================

@@ -5,9 +5,12 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -21,7 +24,10 @@ import com.example.vigil.data.GameViewModel
 import com.example.vigil.model.AdminUserEntry
 import com.example.vigil.model.CheatAlertItem
 import com.example.vigil.model.ExerciseConfigItem
+import com.example.vigil.model.Item
+import com.example.vigil.model.ItemSlot
 import com.example.vigil.model.Monster
+import com.example.vigil.model.Rarity
 
 /**
  * Giao diện Bảng Quản Trị Hệ Thống (Admin Screen).
@@ -30,13 +36,17 @@ import com.example.vigil.model.Monster
  */
 @Composable
 fun AdminScreen(vm: GameViewModel, onBack: () -> Unit) {
-    var selectedTab by remember { mutableStateOf("USERS") } // USERS, MONSTERS, EXERCISES, CHEATS
+    var selectedTab by remember { mutableStateOf("USERS") } // USERS, ITEMS, MONSTERS, EXERCISES, CHEATS
 
     // Lấy danh sách người chơi thực tế được tạo trong CSDL (Chỉ Hachimi là Admin ban đầu, các acc khác là User)
     var usersList by remember { mutableStateOf(vm.getAdminUsers()) }
+    var itemsList by remember { mutableStateOf(vm.getAdminItems()) }
+    var selectedItemSlotFilter by remember { mutableStateOf<ItemSlot?>(null) }
+    var itemSearchQuery by remember { mutableStateOf("") }
 
     LaunchedEffect(selectedTab) {
         usersList = vm.getAdminUsers()
+        itemsList = vm.getAdminItems()
     }
 
     var monstersList by remember { mutableStateOf(vm.getAdminMonsters()) }
@@ -46,6 +56,8 @@ fun AdminScreen(vm: GameViewModel, onBack: () -> Unit) {
     var showToastMessage by remember { mutableStateOf<String?>(null) }
     var editingMonster by remember { mutableStateOf<Monster?>(null) }
     var editingExercise by remember { mutableStateOf<ExerciseConfigItem?>(null) }
+    var editingShopItem by remember { mutableStateOf<Item?>(null) }
+    var isCreatingNewShopItem by remember { mutableStateOf(false) }
 
     // State cho việc Đổi Role & Cấp Admin
     var showingGrantAdminDialog by remember { mutableStateOf(false) }
@@ -100,7 +112,7 @@ fun AdminScreen(vm: GameViewModel, onBack: () -> Unit) {
         // --- 2. LIVE KPI METRICS CÂN ĐỐI ---
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             AdminKpiCard(Modifier.weight(1f), "Tài Khoản", "${usersList.size}", Color(0xFF60A5FA))
-            AdminKpiCard(Modifier.weight(1f), "Đấu Hôm Nay", "3", Color(0xFF34D399))
+            AdminKpiCard(Modifier.weight(1f), "Vật Phẩm", "${itemsList.size}", Color(0xFFFFC94D))
             AdminKpiCard(Modifier.weight(1f), "Tổng Reps", "${usersList.sumOf { it.totalReps }}", Color(0xFFF472B6))
             val unresolvedCheats = cheatAlerts.count { !it.isResolved }
             AdminKpiCard(
@@ -113,7 +125,7 @@ fun AdminScreen(vm: GameViewModel, onBack: () -> Unit) {
 
         Spacer(Modifier.height(14.dp))
 
-        // --- 3. TAB SELECTION BAR ---
+        // --- 3. TAB SELECTION BAR (5 TABS: NGƯỜI CHƠI, VẬT PHẨM, QUÁI VẬT, GÓC AI, GIAN LẬN) ---
         Row(
             Modifier
                 .fillMaxWidth()
@@ -121,10 +133,11 @@ fun AdminScreen(vm: GameViewModel, onBack: () -> Unit) {
                 .background(Color(0xFF13102B))
                 .border(1.dp, Color(0xFF251F4A), RoundedCornerShape(14.dp))
                 .padding(4.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
+            horizontalArrangement = Arrangement.spacedBy(3.dp)
         ) {
             val tabs = listOf(
                 "USERS" to "👥 Người Chơi",
+                "ITEMS" to "🛒 Vật Phẩm",
                 "MONSTERS" to "🐉 Quái Vật",
                 "EXERCISES" to "📐 Góc AI",
                 "CHEATS" to "🚨 Gian Lận"
@@ -139,18 +152,19 @@ fun AdminScreen(vm: GameViewModel, onBack: () -> Unit) {
                         .clip(RoundedCornerShape(10.dp))
                         .background(if (isSelected) C.Orange else Color.Transparent)
                         .clickable { selectedTab = key }
-                        .padding(vertical = 9.dp),
+                        .padding(vertical = 9.dp, horizontal = 2.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             label,
                             color = if (isSelected) Color.White else C.Muted,
-                            fontSize = 11.sp,
+                            fontSize = 10.sp,
+                            maxLines = 1,
                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
                         )
                         if (hasAlert && !isSelected) {
-                            Spacer(Modifier.width(4.dp))
+                            Spacer(Modifier.width(3.dp))
                             Box(Modifier.size(6.dp).clip(CircleShape).background(Color(0xFFEF4444)))
                         }
                     }
@@ -404,7 +418,326 @@ fun AdminScreen(vm: GameViewModel, onBack: () -> Unit) {
                 }
             }
 
-            // ==================== TAB 2: QUÁI VẬT & BOSS ====================
+            // ==================== TAB 2: QUẢN LÝ VẬT PHẨM CỬA HÀNG (SHOP ITEMS) ====================
+            else if (selectedTab == "ITEMS") {
+                val filteredItems = itemsList.filter { item ->
+                    val matchSlot = selectedItemSlotFilter == null || item.slot == selectedItemSlotFilter
+                    val matchQuery = itemSearchQuery.isBlank() ||
+                            item.name.contains(itemSearchQuery, ignoreCase = true) ||
+                            item.id.contains(itemSearchQuery, ignoreCase = true)
+                    matchSlot && matchQuery
+                }
+
+                item {
+                    Column(Modifier.fillMaxWidth()) {
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                "VẬT PHẨM BÁN TRONG CỬA HÀNG (${filteredItems.size}/${itemsList.size})",
+                                color = C.Muted,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 1.sp
+                            )
+                            Text("Đồng bộ trực tiếp với Cửa hàng", color = Color(0xFFFFC94D), fontSize = 10.sp)
+                        }
+
+                        Spacer(Modifier.height(8.dp))
+
+                        // Nút Thêm Vật Phẩm Mới & Khôi Phục Mặc Định
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Box(
+                                Modifier
+                                    .weight(1.3f)
+                                    .height(38.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(C.Orange)
+                                    .clickable {
+                                        isCreatingNewShopItem = true
+                                        editingShopItem = Item(
+                                            "item_custom_${System.currentTimeMillis() % 10000}",
+                                            "Trang Bị Mới",
+                                            ItemSlot.WEAPON,
+                                            Rarity.EPIC,
+                                            500,
+                                            10,
+                                            25,
+                                            15,
+                                            15,
+                                            10,
+                                            "Vật phẩm đặc biệt do Quản trị viên chế tác.",
+                                            "⚔️"
+                                        )
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("➕", fontSize = 12.sp)
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("Thêm Vật Phẩm Mới", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+
+                            Box(
+                                Modifier
+                                    .weight(0.7f)
+                                    .height(38.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(Color(0xFF221A3E))
+                                    .border(1.dp, Color(0xFF3B2F63), RoundedCornerShape(10.dp))
+                                    .clickable {
+                                        vm.resetAdminDefaultItems()
+                                        itemsList = vm.getAdminItems()
+                                        showToastMessage = "Đã khôi phục kho vật phẩm mặc định của Cửa hàng!"
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text("🔄 Khôi Phục Gốc", color = Color(0xFFC4B5FD), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+
+                        Spacer(Modifier.height(8.dp))
+
+                        // Thanh lọc theo Loại Trang Bị (ItemSlot)
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            item {
+                                val isAll = selectedItemSlotFilter == null
+                                Box(
+                                    Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(if (isAll) C.Orange else Color(0xFF1A1533))
+                                        .border(1.dp, if (isAll) C.Orange else C.Border, RoundedCornerShape(8.dp))
+                                        .clickable { selectedItemSlotFilter = null }
+                                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                                ) {
+                                    Text("Tất cả (${itemsList.size})", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                            items(ItemSlot.entries.toList()) { slot ->
+                                val isSel = selectedItemSlotFilter == slot
+                                Box(
+                                    Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(if (isSel) C.Orange else Color(0xFF1A1533))
+                                        .border(1.dp, if (isSel) C.Orange else C.Border, RoundedCornerShape(8.dp))
+                                        .clickable { selectedItemSlotFilter = slot }
+                                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                                ) {
+                                    Text("${slot.icon} ${slot.label}", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+
+                        Spacer(Modifier.height(8.dp))
+
+                        // Ô tìm kiếm tên vật phẩm
+                        OutlinedTextField(
+                            value = itemSearchQuery,
+                            onValueChange = { itemSearchQuery = it },
+                            placeholder = { Text("🔍 Tìm kiếm tên hoặc mã vật phẩm...", fontSize = 12.sp) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White,
+                                focusedBorderColor = C.Orange,
+                                unfocusedBorderColor = C.Border,
+                                focusedContainerColor = Color(0xFF141029),
+                                unfocusedContainerColor = Color(0xFF141029)
+                            )
+                        )
+                    }
+                }
+
+                items(filteredItems, key = { it.id }) { shopItem ->
+                    val rarityColor = Color(shopItem.rarity.colorHex)
+                    VCard(border = rarityColor.copy(alpha = 0.45f)) {
+                        Column(Modifier.fillMaxWidth()) {
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    Modifier
+                                        .size(50.dp)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(rarityColor.copy(alpha = 0.15f))
+                                        .border(1.5.dp, rarityColor, RoundedCornerShape(12.dp)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(shopItem.icon, fontSize = 26.sp)
+                                }
+
+                                Spacer(Modifier.width(12.dp))
+
+                                Column(Modifier.weight(1f)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            shopItem.name,
+                                            color = Color.White,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 15.sp
+                                        )
+                                        Spacer(Modifier.width(6.dp))
+                                        StatBadge(shopItem.rarity.label, rarityColor)
+                                    }
+                                    Spacer(Modifier.height(3.dp))
+                                    Text(
+                                        "${shopItem.slot.icon} ${shopItem.slot.label}  •  ⚡ ${shopItem.combatPower} CP  •  Mã: ${shopItem.id}",
+                                        color = C.Muted,
+                                        fontSize = 11.sp
+                                    )
+                                    if (shopItem.description.isNotBlank()) {
+                                        Spacer(Modifier.height(2.dp))
+                                        Text(
+                                            shopItem.description,
+                                            color = C.Muted.copy(alpha = 0.85f),
+                                            fontSize = 11.sp,
+                                            maxLines = 1
+                                        )
+                                    }
+                                }
+
+                                Spacer(Modifier.width(8.dp))
+
+                                // Giá bán trong Cửa hàng
+                                Column(
+                                    horizontalAlignment = Alignment.End,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(Color(0xFF141029))
+                                        .border(1.dp, Color(0xFF2E2657), RoundedCornerShape(8.dp))
+                                        .padding(horizontal = 8.dp, vertical = 5.dp)
+                                ) {
+                                    Text(
+                                        "🪙 ${shopItem.priceGold}",
+                                        color = C.Yellow,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.ExtraBold
+                                    )
+                                    if (shopItem.priceGems > 0) {
+                                        Text(
+                                            "💎 ${shopItem.priceGems}",
+                                            color = C.Blue,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            }
+
+                            Spacer(Modifier.height(8.dp))
+
+                            // Hàng chỉ số cộng thêm của vật phẩm
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                AdminMetricChip(Modifier.weight(1f), "💪 Sức mạnh", "+${shopItem.bonusStr}", C.Orange)
+                                AdminMetricChip(Modifier.weight(1f), "🛡️ Bền bỉ", "+${shopItem.bonusEnd}", C.Green)
+                                AdminMetricChip(Modifier.weight(1f), "🎯 Chuẩn xác", "+${shopItem.bonusPre}", C.Blue)
+                                AdminMetricChip(Modifier.weight(1f), "🍀 May mắn", "+${shopItem.bonusLuck}", C.Yellow)
+                            }
+
+                            Spacer(Modifier.height(10.dp))
+                            Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0xFF252047)))
+                            Spacer(Modifier.height(10.dp))
+
+                            // Hàng nút thao tác nhanh: Giảm giá, Tăng giá, Sửa chi tiết, Xóa khỏi Cửa hàng
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    Modifier
+                                        .weight(0.85f)
+                                        .height(36.dp)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(Color(0xFF1E193C))
+                                        .border(1.dp, Color(0xFF382F63), RoundedCornerShape(10.dp))
+                                        .clickable {
+                                            val newGold = maxOf(10, shopItem.priceGold - 50)
+                                            val updated = Item(
+                                                shopItem.id, shopItem.name, shopItem.slot, shopItem.rarity,
+                                                newGold, shopItem.priceGems, shopItem.bonusStr, shopItem.bonusEnd,
+                                                shopItem.bonusPre, shopItem.bonusLuck, shopItem.description, shopItem.icon
+                                            )
+                                            vm.saveAdminItem(updated)
+                                            itemsList = vm.getAdminItems()
+                                            showToastMessage = "Đã giảm giá ${shopItem.name} xuống $newGold Vàng!"
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text("-50 🪙", color = Color(0xFFCBD5E1), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+
+                                Box(
+                                    Modifier
+                                        .weight(0.85f)
+                                        .height(36.dp)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(Color(0xFF1E193C))
+                                        .border(1.dp, Color(0xFF382F63), RoundedCornerShape(10.dp))
+                                        .clickable {
+                                            val newGold = shopItem.priceGold + 50
+                                            val updated = Item(
+                                                shopItem.id, shopItem.name, shopItem.slot, shopItem.rarity,
+                                                newGold, shopItem.priceGems, shopItem.bonusStr, shopItem.bonusEnd,
+                                                shopItem.bonusPre, shopItem.bonusLuck, shopItem.description, shopItem.icon
+                                            )
+                                            vm.saveAdminItem(updated)
+                                            itemsList = vm.getAdminItems()
+                                            showToastMessage = "Đã tăng giá ${shopItem.name} lên $newGold Vàng!"
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text("+50 🪙", color = C.Yellow, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+
+                                Box(
+                                    Modifier
+                                        .weight(1.1f)
+                                        .height(36.dp)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(C.Orange)
+                                        .clickable {
+                                            isCreatingNewShopItem = false
+                                            editingShopItem = shopItem
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text("✏️ Sửa", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+
+                                Box(
+                                    Modifier
+                                        .weight(0.8f)
+                                        .height(36.dp)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(Color(0xFFEF4444).copy(alpha = 0.2f))
+                                        .border(1.dp, Color(0xFFEF4444), RoundedCornerShape(10.dp))
+                                        .clickable {
+                                            val deleted = vm.deleteAdminItem(shopItem.id)
+                                            if (deleted) {
+                                                itemsList = vm.getAdminItems()
+                                                showToastMessage = "Đã xóa vật phẩm '${shopItem.name}' khỏi Cửa hàng!"
+                                            }
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text("🗑️ Xóa", color = Color(0xFFFCA5A5), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ==================== TAB 3: QUÁI VẬT & BOSS ====================
             else if (selectedTab == "MONSTERS") {
                 item {
                     Row(
@@ -1069,6 +1402,236 @@ fun AdminScreen(vm: GameViewModel, onBack: () -> Unit) {
                 },
                 dismissButton = {
                     TextButton(onClick = { editingExercise = null }) {
+                        Text("HỦY", color = C.Muted)
+                    }
+                }
+            )
+        }
+
+        // --- 10. DIALOG THÊM MỚI / CHỈNH SỬA VẬT PHẨM CỬA HÀNG ---
+        editingShopItem?.let { currentItem ->
+            var itemName by remember(currentItem) { mutableStateOf(currentItem.name) }
+            var itemIcon by remember(currentItem) { mutableStateOf(currentItem.icon) }
+            var itemSlot by remember(currentItem) { mutableStateOf(currentItem.slot) }
+            var itemRarity by remember(currentItem) { mutableStateOf(currentItem.rarity) }
+            var priceGoldText by remember(currentItem) { mutableStateOf(currentItem.priceGold.toString()) }
+            var priceGemsText by remember(currentItem) { mutableStateOf(currentItem.priceGems.toString()) }
+            var strText by remember(currentItem) { mutableStateOf(currentItem.bonusStr.toString()) }
+            var endText by remember(currentItem) { mutableStateOf(currentItem.bonusEnd.toString()) }
+            var preText by remember(currentItem) { mutableStateOf(currentItem.bonusPre.toString()) }
+            var luckText by remember(currentItem) { mutableStateOf(currentItem.bonusLuck.toString()) }
+            var descText by remember(currentItem) { mutableStateOf(currentItem.description) }
+
+            val tfColors = OutlinedTextFieldDefaults.colors(
+                focusedTextColor = Color.White,
+                unfocusedTextColor = Color(0xFFE2E8F0),
+                focusedBorderColor = C.Orange,
+                unfocusedBorderColor = Color(0xFF475569),
+                focusedLabelColor = C.Orange,
+                unfocusedLabelColor = C.Muted,
+                cursorColor = C.Orange
+            )
+
+            AlertDialog(
+                onDismissRequest = { editingShopItem = null },
+                shape = RoundedCornerShape(18.dp),
+                containerColor = Color(0xFF1B1530),
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(itemIcon.ifBlank { "🛒" }, fontSize = 22.sp)
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            if (isCreatingNewShopItem) "Thêm Vật Phẩm Cửa Hàng" else "Sửa Vật Phẩm: ${currentItem.name}",
+                            color = C.Orange,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp
+                        )
+                    }
+                },
+                text = {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 430.dp)
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedTextField(
+                                value = itemName,
+                                onValueChange = { itemName = it },
+                                label = { Text("Tên vật phẩm") },
+                                singleLine = true,
+                                colors = tfColors,
+                                modifier = Modifier.weight(1.6f)
+                            )
+                            OutlinedTextField(
+                                value = itemIcon,
+                                onValueChange = { itemIcon = it },
+                                label = { Text("Icon") },
+                                singleLine = true,
+                                colors = tfColors,
+                                modifier = Modifier.weight(0.7f)
+                            )
+                        }
+
+                        // Chọn nhanh loại trang bị (ItemSlot)
+                        Text("Loại trang bị (Slot):", color = C.Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            items(ItemSlot.entries.toList()) { slot ->
+                                val sel = itemSlot == slot
+                                Box(
+                                    Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(if (sel) C.Orange else Color(0xFF141029))
+                                        .border(1.dp, if (sel) C.Orange else Color(0xFF2E2657), RoundedCornerShape(8.dp))
+                                        .clickable {
+                                            itemSlot = slot
+                                            if (isCreatingNewShopItem) {
+                                                itemIcon = slot.icon
+                                            }
+                                        }
+                                        .padding(horizontal = 8.dp, vertical = 5.dp)
+                                ) {
+                                    Text("${slot.icon} ${slot.label}", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+
+                        // Chọn nhanh Phẩm cấp (Rarity)
+                        Text("Phẩm cấp (Rarity):", color = C.Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            items(Rarity.entries.toList()) { rar ->
+                                val sel = itemRarity == rar
+                                val rColor = Color(rar.colorHex)
+                                Box(
+                                    Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(if (sel) rColor.copy(alpha = 0.28f) else Color(0xFF141029))
+                                        .border(1.5.dp, if (sel) rColor else Color(0xFF2E2657), RoundedCornerShape(8.dp))
+                                        .clickable { itemRarity = rar }
+                                        .padding(horizontal = 8.dp, vertical = 5.dp)
+                                ) {
+                                    Text(rar.label, color = if (sel) rColor else Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+
+                        // Giá Vàng & Giá Kim Cương
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedTextField(
+                                value = priceGoldText,
+                                onValueChange = { priceGoldText = it },
+                                label = { Text("Giá Vàng (🪙)") },
+                                singleLine = true,
+                                colors = tfColors,
+                                modifier = Modifier.weight(1f)
+                            )
+                            OutlinedTextField(
+                                value = priceGemsText,
+                                onValueChange = { priceGemsText = it },
+                                label = { Text("Giá Ngọc (💎)") },
+                                singleLine = true,
+                                colors = tfColors,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+
+                        // 4 Chỉ số cộng thêm (STR, END, PRE, LUCK)
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedTextField(
+                                value = strText,
+                                onValueChange = { strText = it },
+                                label = { Text("💪 +STR") },
+                                singleLine = true,
+                                colors = tfColors,
+                                modifier = Modifier.weight(1f)
+                            )
+                            OutlinedTextField(
+                                value = endText,
+                                onValueChange = { endText = it },
+                                label = { Text("🛡️ +END") },
+                                singleLine = true,
+                                colors = tfColors,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedTextField(
+                                value = preText,
+                                onValueChange = { preText = it },
+                                label = { Text("🎯 +PRE") },
+                                singleLine = true,
+                                colors = tfColors,
+                                modifier = Modifier.weight(1f)
+                            )
+                            OutlinedTextField(
+                                value = luckText,
+                                onValueChange = { luckText = it },
+                                label = { Text("🍀 +LUCK") },
+                                singleLine = true,
+                                colors = tfColors,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+
+                        OutlinedTextField(
+                            value = descText,
+                            onValueChange = { descText = it },
+                            label = { Text("Mô tả vật phẩm") },
+                            colors = tfColors,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            val cleanName = itemName.trim().ifEmpty { "Vật Phẩm Mới" }
+                            val cleanIcon = itemIcon.trim().ifEmpty { itemSlot.icon }
+                            val newGold = (priceGoldText.toIntOrNull() ?: currentItem.priceGold).coerceAtLeast(0)
+                            val newGems = (priceGemsText.toIntOrNull() ?: currentItem.priceGems).coerceAtLeast(0)
+                            val newStr = (strText.toIntOrNull() ?: currentItem.bonusStr).coerceAtLeast(0)
+                            val newEnd = (endText.toIntOrNull() ?: currentItem.bonusEnd).coerceAtLeast(0)
+                            val newPre = (preText.toIntOrNull() ?: currentItem.bonusPre).coerceAtLeast(0)
+                            val newLuck = (luckText.toIntOrNull() ?: currentItem.bonusLuck).coerceAtLeast(0)
+
+                            val savedItem = Item(
+                                currentItem.id,
+                                cleanName,
+                                itemSlot,
+                                itemRarity,
+                                newGold,
+                                newGems,
+                                newStr,
+                                newEnd,
+                                newPre,
+                                newLuck,
+                                descText.trim(),
+                                cleanIcon
+                            )
+                            vm.saveAdminItem(savedItem)
+                            itemsList = vm.getAdminItems()
+                            showToastMessage = if (isCreatingNewShopItem) {
+                                "Đã thêm vật phẩm '$cleanName' vào Cửa hàng!"
+                            } else {
+                                "Đã cập nhật vật phẩm '$cleanName' trong Cửa hàng!"
+                            }
+                            editingShopItem = null
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = C.Orange),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text(
+                            if (isCreatingNewShopItem) "THÊM VÀO CỬA HÀNG" else "LƯU VẬT PHẨM",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { editingShopItem = null }) {
                         Text("HỦY", color = C.Muted)
                     }
                 }

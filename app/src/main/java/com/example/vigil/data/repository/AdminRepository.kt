@@ -5,6 +5,7 @@ import com.example.vigil.model.AdminUserEntry
 import com.example.vigil.model.AdventureData
 import com.example.vigil.model.CheatAlertItem
 import com.example.vigil.model.ExerciseConfigItem
+import com.example.vigil.model.Item
 import com.example.vigil.model.Monster
 import com.example.vigil.network.ApiClient
 import kotlinx.coroutines.CoroutineScope
@@ -191,5 +192,41 @@ class AdminRepository(private val db: VigilSqlDb) {
                 ApiClient.banUser(username, reason)
             } catch (ignored: Exception) {}
         }
+    }
+
+    // =========================================================================
+    // QUẢN LÝ VẬT PHẨM BÁN TRONG CỬA HÀNG (SHOP ITEMS CRUD)
+    // =========================================================================
+
+    fun getShopItems(): List<Item> {
+        return db.allItems
+    }
+
+    fun saveShopItem(item: Item): Boolean {
+        val ok = db.saveShopItem(item)
+        if (ok) {
+            bgScope.launch {
+                try {
+                    ApiClient.saveAdminItem(item)
+                } catch (ignored: Exception) {}
+            }
+        }
+        return ok
+    }
+
+    fun deleteShopItem(itemId: String): Boolean {
+        val ok = db.deleteShopItem(itemId)
+        if (ok) {
+            bgScope.launch {
+                try {
+                    ApiClient.deleteAdminItem(itemId)
+                } catch (ignored: Exception) {}
+            }
+        }
+        return ok
+    }
+
+    fun resetDefaultShopItems() {
+        db.resetDefaultShopItems()
     }
 }
