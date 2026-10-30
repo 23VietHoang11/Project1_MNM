@@ -238,7 +238,7 @@ fun AdventureScreen(vm: GameViewModel, nav: NavController) {
                 Text("Bản Đồ Thế Giới", color = C.Text, fontSize = 32.sp, fontWeight = FontWeight.Black)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Chip("⚡ Solo PvP", C.Orange) { nav.navigate("pvp") }
+
                 Chip("Chặng ${vm.stage}", C.Yellow)
             }
         }

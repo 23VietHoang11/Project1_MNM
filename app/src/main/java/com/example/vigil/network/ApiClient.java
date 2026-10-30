@@ -6,6 +6,7 @@ import com.example.vigil.model.GuildBossInfo;
 import com.example.vigil.model.GuildJoinApplication;
 import com.example.vigil.model.Item;
 import com.example.vigil.model.ItemSlot;
+import com.example.vigil.model.PvpRoomSyncState;
 import com.example.vigil.model.Rarity;
 import com.example.vigil.model.WorkoutReward;
 import com.google.gson.Gson;
@@ -700,6 +701,113 @@ public class ApiClient {
         } catch (Exception e) {
             return false;
         }
+    }
+
+    public static PvpRoomSyncState joinPvpQueue(
+            String username,
+            String avatar,
+            int level,
+            int attackDamage,
+            String exercise,
+            int durationSec
+    ) {
+        try {
+            JsonObject body = new JsonObject();
+            body.addProperty("username", username);
+            body.addProperty("avatar", avatar);
+            body.addProperty("level", level);
+            body.addProperty("attackDamage", attackDamage);
+            body.addProperty("exercise", exercise);
+            body.addProperty("durationSec", durationSec);
+            RequestBody reqBody = RequestBody.create(jsonMediaType, body.toString());
+
+            Request req = new Request.Builder().url(baseUrl + "/api/pvp/queue/join").post(reqBody).build();
+            try (Response res = client.newCall(req).execute()) {
+                if (!res.isSuccessful() || res.body() == null) return new PvpRoomSyncState(false, "", "", "🧑‍🎤", 1, 50, 0, 0, 165, "", null);
+                JsonObject obj = gson.fromJson(res.body().string(), JsonObject.class);
+                return parsePvpRoomSync(obj);
+            }
+        } catch (Exception e) {
+            return new PvpRoomSyncState(false, "", "", "🧑‍🎤", 1, 50, 0, 0, 165, "", null);
+        }
+    }
+
+    public static PvpRoomSyncState checkPvpQueueStatus(String username) {
+        try {
+            Request req = new Request.Builder()
+                    .url(baseUrl + "/api/pvp/queue/status?username=" + username)
+                    .get()
+                    .build();
+            try (Response res = client.newCall(req).execute()) {
+                if (!res.isSuccessful() || res.body() == null) return new PvpRoomSyncState(false, "", "", "🧑‍🎤", 1, 50, 0, 0, 165, "", null);
+                JsonObject obj = gson.fromJson(res.body().string(), JsonObject.class);
+                return parsePvpRoomSync(obj);
+            }
+        } catch (Exception e) {
+            return new PvpRoomSyncState(false, "", "", "🧑‍🎤", 1, 50, 0, 0, 165, "", null);
+        }
+    }
+
+    public static void cancelPvpQueue(String username) {
+        try {
+            JsonObject body = new JsonObject();
+            body.addProperty("username", username);
+            RequestBody reqBody = RequestBody.create(jsonMediaType, body.toString());
+            Request req = new Request.Builder().url(baseUrl + "/api/pvp/queue/cancel").post(reqBody).build();
+            try (Response ignored = client.newCall(req).execute()) {}
+        } catch (Exception ignored) {}
+    }
+
+    public static PvpRoomSyncState syncPvpRoom(
+            String roomId,
+            String username,
+            int reps,
+            int score,
+            int angle,
+            String hint,
+            String frameBase64
+    ) {
+        try {
+            JsonObject body = new JsonObject();
+            body.addProperty("roomId", roomId);
+            body.addProperty("username", username);
+            body.addProperty("reps", reps);
+            body.addProperty("score", score);
+            body.addProperty("angle", angle);
+            body.addProperty("hint", hint);
+            if (frameBase64 != null) body.addProperty("frameBase64", frameBase64);
+            RequestBody reqBody = RequestBody.create(jsonMediaType, body.toString());
+
+            Request req = new Request.Builder().url(baseUrl + "/api/pvp/room/sync").post(reqBody).build();
+            try (Response res = client.newCall(req).execute()) {
+                if (!res.isSuccessful() || res.body() == null) return new PvpRoomSyncState(false, "", "", "🧑‍🎤", 1, 50, 0, 0, 165, "", null);
+                JsonObject obj = gson.fromJson(res.body().string(), JsonObject.class);
+                return parsePvpRoomSync(obj);
+            }
+        } catch (Exception e) {
+            return new PvpRoomSyncState(false, "", "", "🧑‍🎤", 1, 50, 0, 0, 165, "", null);
+        }
+    }
+
+    private static PvpRoomSyncState parsePvpRoomSync(JsonObject obj) {
+        if (obj == null || !obj.has("matched") || !obj.get("matched").getAsBoolean()) {
+            return new PvpRoomSyncState(false, "", "", "🧑‍🎤", 1, 50, 0, 0, 165, "", null);
+        }
+        String roomId = obj.has("roomId") && !obj.get("roomId").isJsonNull() ? obj.get("roomId").getAsString() : "";
+        JsonObject opp = obj.has("opponent") && obj.get("opponent").isJsonObject() ? obj.getAsJsonObject("opponent") : null;
+        if (opp == null) {
+            return new PvpRoomSyncState(true, roomId, "Đối Thủ", "🧑‍🎤", 1, 50, 0, 0, 165, "Đang tập", null);
+        }
+        String uName = opp.has("username") && !opp.get("username").isJsonNull() ? opp.get("username").getAsString() : "Đối Thủ";
+        String avt = opp.has("avatar") && !opp.get("avatar").isJsonNull() ? opp.get("avatar").getAsString() : "🧑‍🎤";
+        int lvl = opp.has("level") && !opp.get("level").isJsonNull() ? opp.get("level").getAsInt() : 1;
+        int dmg = opp.has("attackDamage") && !opp.get("attackDamage").isJsonNull() ? opp.get("attackDamage").getAsInt() : 50;
+        int reps = opp.has("reps") && !opp.get("reps").isJsonNull() ? opp.get("reps").getAsInt() : 0;
+        int score = opp.has("score") && !opp.get("score").isJsonNull() ? opp.get("score").getAsInt() : 0;
+        int angle = opp.has("angle") && !opp.get("angle").isJsonNull() ? opp.get("angle").getAsInt() : 165;
+        String hint = opp.has("hint") && !opp.get("hint").isJsonNull() ? opp.get("hint").getAsString() : "Đang giữ nhịp tập";
+        String frame = opp.has("frameBase64") && !opp.get("frameBase64").isJsonNull() ? opp.get("frameBase64").getAsString() : null;
+        return new PvpRoomSyncState(true, roomId, uName, avt, lvl, dmg, reps, score, angle, hint, frame);
     }
 
     public static boolean saveAdminItem(Item item) {

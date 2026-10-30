@@ -1,11 +1,11 @@
 package com.example.vigil.model
 
 /**
- * Thực thể dữ liệu cho tính năng Đấu Trường Solo PvP (1 vs 1) tính điểm theo thời gian.
+ * Thực thể dữ liệu cho tính năng Đấu Trường Solo PvP (1 vs 1) ghép trận người chơi thật & Video Call.
  */
 enum class PvpBattleMode(val label: String, val desc: String) {
-    LIVE_SOLO("⚡ Đua Điểm Trực Tiếp", "2 người chơi cùng đua điểm thời gian thực"),
-    PASS_AND_PLAY("🤝 Đấu Luân Phiên (2 Người)", "Người 1 thi đấu trước, Người 2 thi đấu sau")
+    LIVE_SOLO("📹 Video Call 1v1", "2 người chơi thật solo trực tiếp qua khung hình Camera"),
+    PASS_AND_PLAY("🤝 Luân Phiên 2 Người", "Người 1 thi đấu trước, Người 2 thi đấu sau")
 }
 
 data class PvpOpponent(
@@ -15,6 +15,20 @@ data class PvpOpponent(
     val level: Int,
     val attackDamage: Int,
     val isRealUser: Boolean = true
+)
+
+data class PvpRoomSyncState(
+    val matched: Boolean,
+    val roomId: String = "",
+    val opponentName: String = "",
+    val opponentAvatar: String = "🧑‍🎤",
+    val opponentLevel: Int = 1,
+    val opponentDamage: Int = 50,
+    val opponentReps: Int = 0,
+    val opponentScore: Int = 0,
+    val opponentAngle: Int = 165,
+    val opponentHint: String = "Đang giữ nhịp tập",
+    val opponentFrameBase64: String? = null
 )
 
 data class PvpMatchRecord(

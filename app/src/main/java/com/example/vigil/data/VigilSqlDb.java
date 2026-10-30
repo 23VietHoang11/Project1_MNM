@@ -306,6 +306,7 @@ public class VigilSqlDb extends SQLiteOpenHelper {
         seedItems(db);
         seedInitialUser(db);
         seedSampleWorkouts(db);
+        ensureUserColumns(db);
     }
 
     @Override
@@ -432,7 +433,7 @@ public class VigilSqlDb extends SQLiteOpenHelper {
             // Cập nhật lại 48 vật phẩm
             seedItems(db);
         }
-        if (oldVersion < 7) {
+        if (oldVersion < 8) {
             ensureUserColumns(db);
         }
     }
@@ -2628,26 +2629,22 @@ public class VigilSqlDb extends SQLiteOpenHelper {
 
     public List<PvpOpponent> getPvpOpponents(int currentUserId) {
         List<PvpOpponent> list = new ArrayList<>();
-        SQLiteDatabase db = getReadableDatabase();
-        Cursor c = db.rawQuery(
-                "SELECT id, username, avatar, level, total_reps FROM users WHERE id != ? AND status != 0 ORDER BY level DESC, total_reps DESC",
-                new String[]{String.valueOf(currentUserId)}
-        );
-        while (c.moveToNext()) {
-            int id = c.getInt(0);
-            String uname = c.getString(1);
-            String avt = c.getString(2) != null ? c.getString(2) : "🧑‍🎤";
-            int lvl = Math.max(1, c.getInt(3));
-            int dmg = 25 + lvl * 28;
-            list.add(new PvpOpponent(id, uname, avt, lvl, dmg, true));
-        }
-        c.close();
-
-        // Nếu trong CSDL chưa có người chơi thứ 2 nào, bổ sung đấu thủ sảnh PvP để người chơi luôn có thể test Solo ngay
-        if (list.isEmpty()) {
-            list.add(new PvpOpponent(901, "Kaito_Solo", "🥷", 3, 110, false));
-            list.add(new PvpOpponent(902, "Valkyrie_Fit", "👑", 5, 165, false));
-        }
+        try {
+            SQLiteDatabase db = getReadableDatabase();
+            Cursor c = db.rawQuery(
+                    "SELECT id, username, avatar, level, total_reps FROM users WHERE id != ? AND status != 0 ORDER BY level DESC, total_reps DESC",
+                    new String[]{String.valueOf(currentUserId)}
+            );
+            while (c.moveToNext()) {
+                int id = c.getInt(0);
+                String uname = c.getString(1);
+                String avt = c.getString(2) != null ? c.getString(2) : "🧑‍🎤";
+                int lvl = Math.max(1, c.getInt(3));
+                int dmg = 25 + lvl * 28;
+                list.add(new PvpOpponent(id, uname, avt, lvl, dmg, true));
+            }
+            c.close();
+        } catch (Exception ignored) {}
         return list;
     }
 
@@ -2761,30 +2758,33 @@ public class VigilSqlDb extends SQLiteOpenHelper {
 
     public List<PvpMatchRecord> getPvpHistory(int userId) {
         List<PvpMatchRecord> list = new ArrayList<>();
-        SQLiteDatabase db = getReadableDatabase();
-        Cursor c = db.rawQuery(
-                "SELECT id, player1_name, player2_name, exercise, duration_sec, p1_reps, p1_score, p2_reps, p2_score, winner_name, gold_reward, xp_reward, created_at " +
-                "FROM pvp_matches ORDER BY id DESC LIMIT 15",
-                null
-        );
-        while (c.moveToNext()) {
-            list.add(new PvpMatchRecord(
-                    c.getInt(0),
-                    c.getString(1),
-                    c.getString(2),
-                    c.getString(3),
-                    c.getInt(4),
-                    c.getInt(5),
-                    c.getInt(6),
-                    c.getInt(7),
-                    c.getInt(8),
-                    c.getString(9),
-                    c.getInt(10),
-                    c.getInt(11),
-                    c.getString(12) != null ? c.getString(12) : ""
-            ));
-        }
-        c.close();
+        try {
+            SQLiteDatabase db = getWritableDatabase();
+            ensureUserColumns(db);
+            Cursor c = db.rawQuery(
+                    "SELECT id, player1_name, player2_name, exercise, duration_sec, p1_reps, p1_score, p2_reps, p2_score, winner_name, gold_reward, xp_reward, created_at " +
+                    "FROM pvp_matches ORDER BY id DESC LIMIT 15",
+                    null
+            );
+            while (c.moveToNext()) {
+                list.add(new PvpMatchRecord(
+                        c.getInt(0),
+                        c.getString(1),
+                        c.getString(2),
+                        c.getString(3),
+                        c.getInt(4),
+                        c.getInt(5),
+                        c.getInt(6),
+                        c.getInt(7),
+                        c.getInt(8),
+                        c.getString(9),
+                        c.getInt(10),
+                        c.getInt(11),
+                        c.getString(12) != null ? c.getString(12) : ""
+                ));
+            }
+            c.close();
+        } catch (Exception ignored) {}
         return list;
     }
 

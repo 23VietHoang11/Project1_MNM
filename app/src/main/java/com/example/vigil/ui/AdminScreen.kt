@@ -183,16 +183,7 @@ fun AdminScreen(vm: GameViewModel, onBack: () -> Unit) {
             if (selectedTab == "USERS") {
                 item {
                     Column(Modifier.fillMaxWidth()) {
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text("TÀI KHOẢN TRONG CSDL (${usersList.size})", color = C.Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-                            Text("Chỉ Hachimi là Admin ban đầu", color = Color(0xFFFFC94D), fontSize = 10.sp, fontWeight = FontWeight.Medium)
-                        }
 
-                        Spacer(Modifier.height(8.dp))
 
                         // Nút hành động: Cấp Admin theo tên tài khoản & Làm mới
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -442,7 +433,7 @@ fun AdminScreen(vm: GameViewModel, onBack: () -> Unit) {
                                 fontWeight = FontWeight.Bold,
                                 letterSpacing = 1.sp
                             )
-                            Text("Đồng bộ trực tiếp với Cửa hàng", color = Color(0xFFFFC94D), fontSize = 10.sp)
+
                         }
 
                         Spacer(Modifier.height(8.dp))

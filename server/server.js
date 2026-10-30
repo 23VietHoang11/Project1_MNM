@@ -1726,9 +1726,142 @@ app.post('/api/admin/items/delete', async (req, res) => {
 });
 
 // =========================================================================
-// 13. PVP SOLO 1v1 ARENA API ENDPOINTS
+// 13. PVP SOLO 1v1 ARENA API ENDPOINTS (REAL PLAYER MATCHMAKING & VIDEO CALL SYNC)
 // =========================================================================
 if (!memoryDB.pvp_matches) memoryDB.pvp_matches = [];
+if (!memoryDB.pvp_queue) memoryDB.pvp_queue = [];
+if (!memoryDB.pvp_rooms) memoryDB.pvp_rooms = {};
+
+// Tham gia hàng đợi ghép trận người chơi thật
+app.post('/api/pvp/queue/join', (req, res) => {
+    const { username, avatar, level, attackDamage, exercise, durationSec } = req.body;
+    if (!username) return res.status(400).json({ error: 'Thiếu username' });
+
+    const now = Date.now();
+    // Xóa các yêu cầu cũ quá 5 phút
+    memoryDB.pvp_queue = memoryDB.pvp_queue.filter(q => (now - q.joinedAt) < 300000);
+
+    // Kiểm tra xem người chơi này đã được ghép vào phòng nào chưa
+    const existingSelf = memoryDB.pvp_queue.find(q => q.username.toLowerCase() === username.toLowerCase());
+    if (existingSelf && existingSelf.matchedRoomId && memoryDB.pvp_rooms[existingSelf.matchedRoomId]) {
+        const room = memoryDB.pvp_rooms[existingSelf.matchedRoomId];
+        const opp = room.player1.username.toLowerCase() === username.toLowerCase() ? room.player2 : room.player1;
+        return res.json({ matched: true, roomId: room.roomId, opponent: opp });
+    }
+
+    // Tìm một người chơi thật khác đang chờ ghép trận
+    const waitingOpponent = memoryDB.pvp_queue.find(
+        q => q.username.toLowerCase() !== username.toLowerCase() && !q.matchedRoomId
+    );
+
+    if (waitingOpponent) {
+        const roomId = `room_${now}_${Math.floor(Math.random() * 1000)}`;
+        const p1 = {
+            username: waitingOpponent.username,
+            avatar: waitingOpponent.avatar || '🧑‍🎤',
+            level: waitingOpponent.level || 1,
+            attackDamage: waitingOpponent.attackDamage || 50,
+            reps: 0,
+            score: 0,
+            angle: 165,
+            hint: 'Đang vào tư thế',
+            frameBase64: null
+        };
+        const p2 = {
+            username,
+            avatar: avatar || '🧑‍🎤',
+            level: level || 1,
+            attackDamage: attackDamage || 50,
+            reps: 0,
+            score: 0,
+            angle: 165,
+            hint: 'Đang vào tư thế',
+            frameBase64: null
+        };
+        memoryDB.pvp_rooms[roomId] = {
+            roomId,
+            exercise: waitingOpponent.exercise || exercise || 'PUSHUP',
+            durationSec: waitingOpponent.durationSec || durationSec || 30,
+            player1: p1,
+            player2: p2,
+            createdAt: now
+        };
+        waitingOpponent.matchedRoomId = roomId;
+        console.log(`[PvP Matchmaking] 🤝 Đã ghép cặp thành công: ${p1.username} VS ${p2.username} (Phòng: ${roomId})`);
+        return res.json({ matched: true, roomId, opponent: p1 });
+    }
+
+    // Nếu chưa có đối thủ, đưa vào hàng chờ
+    if (existingSelf) {
+        existingSelf.avatar = avatar || existingSelf.avatar;
+        existingSelf.level = level || existingSelf.level;
+        existingSelf.attackDamage = attackDamage || existingSelf.attackDamage;
+        existingSelf.exercise = exercise || existingSelf.exercise;
+        existingSelf.durationSec = durationSec || existingSelf.durationSec;
+        existingSelf.joinedAt = now;
+        existingSelf.matchedRoomId = null;
+    } else {
+        memoryDB.pvp_queue.push({
+            username,
+            avatar: avatar || '🧑‍🎤',
+            level: level || 1,
+            attackDamage: attackDamage || 50,
+            exercise: exercise || 'PUSHUP',
+            durationSec: durationSec || 30,
+            joinedAt: now,
+            matchedRoomId: null
+        });
+    }
+    res.json({ matched: false });
+});
+
+// Kiểm tra trạng thái chờ ghép trận
+app.get('/api/pvp/queue/status', (req, res) => {
+    const username = req.query.username || '';
+    if (!username) return res.json({ matched: false });
+
+    const selfEntry = memoryDB.pvp_queue.find(q => q.username.toLowerCase() === username.toLowerCase());
+    if (selfEntry && selfEntry.matchedRoomId && memoryDB.pvp_rooms[selfEntry.matchedRoomId]) {
+        const room = memoryDB.pvp_rooms[selfEntry.matchedRoomId];
+        const opp = room.player1.username.toLowerCase() === username.toLowerCase() ? room.player2 : room.player1;
+        memoryDB.pvp_queue = memoryDB.pvp_queue.filter(q => q.username.toLowerCase() !== username.toLowerCase());
+        return res.json({ matched: true, roomId: room.roomId, opponent: opp });
+    }
+    res.json({ matched: false });
+});
+
+// Hủy chờ ghép trận
+app.post('/api/pvp/queue/cancel', (req, res) => {
+    const { username } = req.body;
+    if (username) {
+        memoryDB.pvp_queue = memoryDB.pvp_queue.filter(q => q.username.toLowerCase() !== username.toLowerCase());
+    }
+    res.json({ success: true });
+});
+
+// Đồng bộ điểm số, góc khớp và khung hình Video Call trong trận Solo 1v1
+app.post('/api/pvp/room/sync', (req, res) => {
+    const { roomId, username, reps, score, angle, hint, frameBase64 } = req.body;
+    const room = memoryDB.pvp_rooms[roomId];
+    if (!room) {
+        return res.json({ matched: false });
+    }
+    const isP1 = room.player1.username.toLowerCase() === (username || '').toLowerCase();
+    const mySlot = isP1 ? room.player1 : room.player2;
+    const oppSlot = isP1 ? room.player2 : room.player1;
+
+    if (typeof reps === 'number') mySlot.reps = reps;
+    if (typeof score === 'number') mySlot.score = score;
+    if (typeof angle === 'number') mySlot.angle = angle;
+    if (hint) mySlot.hint = hint;
+    if (frameBase64) mySlot.frameBase64 = frameBase64;
+
+    res.json({
+        matched: true,
+        roomId,
+        opponent: oppSlot
+    });
+});
 
 app.post('/api/pvp/finish', async (req, res) => {
     const { player1Name, player2Name, exercise, durationSec, p1Reps, p1Score, p2Reps, p2Score, winnerName } = req.body;
