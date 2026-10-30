@@ -28,7 +28,10 @@ data class PvpRoomSyncState(
     val opponentScore: Int = 0,
     val opponentAngle: Int = 165,
     val opponentHint: String = "Đang giữ nhịp tập",
-    val opponentFrameBase64: String? = null
+    val opponentFrameBase64: String? = null,
+    val roomExercise: String = "",
+    val roomDurationSec: Int = 0,
+    val serverOnline: Boolean = false
 )
 
 data class PvpMatchRecord(

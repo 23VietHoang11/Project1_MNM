@@ -9,7 +9,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '5mb' }));
 app.use((req, res, next) => {
     console.log(`[API Log ${new Date().toLocaleTimeString()}] ${req.method} ${req.url}`);
     next();
@@ -1732,30 +1732,56 @@ if (!memoryDB.pvp_matches) memoryDB.pvp_matches = [];
 if (!memoryDB.pvp_queue) memoryDB.pvp_queue = [];
 if (!memoryDB.pvp_rooms) memoryDB.pvp_rooms = {};
 
-// Tham gia hàng đợi ghép trận người chơi thật
+// Tham gia & duy trì tín hiệu trực tuyến (Heartbeat) trong hàng đợi ghép trận người chơi thật
 app.post('/api/pvp/queue/join', (req, res) => {
-    const { username, avatar, level, attackDamage, exercise, durationSec } = req.body;
+    const { username, avatar, level, attackDamage, exercise, durationSec, resetQueue } = req.body;
     if (!username) return res.status(400).json({ error: 'Thiếu username' });
 
     const now = Date.now();
-    // Xóa các yêu cầu cũ quá 5 phút
-    memoryDB.pvp_queue = memoryDB.pvp_queue.filter(q => (now - q.joinedAt) < 300000);
+    // Chỉ giữ các tài khoản đang thực sự trực tuyến trong hàng chờ (gửi tín hiệu trong 6 giây gần nhất)
+    memoryDB.pvp_queue = memoryDB.pvp_queue.filter(q => {
+        const lastActive = q.lastSeen || q.joinedAt || 0;
+        if (q.matchedRoomId) {
+            return (now - lastActive) < 30000;
+        }
+        return (now - lastActive) <= 6000;
+    });
 
-    // Kiểm tra xem người chơi này đã được ghép vào phòng nào chưa
-    const existingSelf = memoryDB.pvp_queue.find(q => q.username.toLowerCase() === username.toLowerCase());
+    let existingSelf = memoryDB.pvp_queue.find(q => q.username.toLowerCase() === username.toLowerCase());
+
+    // Nếu người chơi bắt đầu lượt tìm trận mới, xóa thông tin phòng cũ (nếu phòng đó đã tạo quá 4 giây)
+    if (resetQueue && existingSelf && existingSelf.matchedRoomId) {
+        const oldRoom = memoryDB.pvp_rooms[existingSelf.matchedRoomId];
+        if (!oldRoom || (now - oldRoom.createdAt) > 4000) {
+            existingSelf.matchedRoomId = null;
+        }
+    }
+
+    // Kiểm tra xem tài khoản này vừa được tài khoản online thứ 2 ghép vào phòng chưa
     if (existingSelf && existingSelf.matchedRoomId && memoryDB.pvp_rooms[existingSelf.matchedRoomId]) {
         const room = memoryDB.pvp_rooms[existingSelf.matchedRoomId];
         const opp = room.player1.username.toLowerCase() === username.toLowerCase() ? room.player2 : room.player1;
-        return res.json({ matched: true, roomId: room.roomId, opponent: opp });
+        memoryDB.pvp_queue = memoryDB.pvp_queue.filter(q => q.username.toLowerCase() !== username.toLowerCase());
+        return res.json({
+            matched: true,
+            roomId: room.roomId,
+            exercise: room.exercise,
+            durationSec: room.durationSec,
+            opponent: opp
+        });
     }
 
-    // Tìm một người chơi thật khác đang chờ ghép trận
+    // Tìm một tài khoản người chơi thật khác ĐANG ONLINE & ĐANG CHỜ GHÉP TRẬN ngay lúc này
     const waitingOpponent = memoryDB.pvp_queue.find(
-        q => q.username.toLowerCase() !== username.toLowerCase() && !q.matchedRoomId
+        q => q.username.toLowerCase() !== username.toLowerCase() &&
+             !q.matchedRoomId &&
+             (now - (q.lastSeen || q.joinedAt || 0)) <= 6000
     );
 
     if (waitingOpponent) {
         const roomId = `room_${now}_${Math.floor(Math.random() * 1000)}`;
+        const roomExercise = waitingOpponent.exercise || exercise || 'PUSHUP';
+        const roomDurationSec = waitingOpponent.durationSec || durationSec || 30;
         const p1 = {
             username: waitingOpponent.username,
             avatar: waitingOpponent.avatar || '🧑‍🎤',
@@ -1780,25 +1806,35 @@ app.post('/api/pvp/queue/join', (req, res) => {
         };
         memoryDB.pvp_rooms[roomId] = {
             roomId,
-            exercise: waitingOpponent.exercise || exercise || 'PUSHUP',
-            durationSec: waitingOpponent.durationSec || durationSec || 30,
+            exercise: roomExercise,
+            durationSec: roomDurationSec,
             player1: p1,
             player2: p2,
             createdAt: now
         };
         waitingOpponent.matchedRoomId = roomId;
-        console.log(`[PvP Matchmaking] 🤝 Đã ghép cặp thành công: ${p1.username} VS ${p2.username} (Phòng: ${roomId})`);
-        return res.json({ matched: true, roomId, opponent: p1 });
+        waitingOpponent.lastSeen = now;
+        // Xóa tài khoản thứ 2 khỏi hàng chờ vì đã nhận kết quả ghép trận ngay lập tức
+        memoryDB.pvp_queue = memoryDB.pvp_queue.filter(q => q.username.toLowerCase() !== username.toLowerCase());
+
+        console.log(`[PvP Matchmaking] 🤝 Đã ghép 2 tài khoản ONLINE: ${p1.username} VS ${p2.username} (Phòng: ${roomId})`);
+        return res.json({
+            matched: true,
+            roomId,
+            exercise: roomExercise,
+            durationSec: roomDurationSec,
+            opponent: p1
+        });
     }
 
-    // Nếu chưa có đối thủ, đưa vào hàng chờ
+    // Nếu chưa có tài khoản thứ 2 cùng bấm ghép trận, giữ trạng thái chờ trực tuyến
     if (existingSelf) {
         existingSelf.avatar = avatar || existingSelf.avatar;
         existingSelf.level = level || existingSelf.level;
         existingSelf.attackDamage = attackDamage || existingSelf.attackDamage;
         existingSelf.exercise = exercise || existingSelf.exercise;
         existingSelf.durationSec = durationSec || existingSelf.durationSec;
-        existingSelf.joinedAt = now;
+        existingSelf.lastSeen = now;
         existingSelf.matchedRoomId = null;
     } else {
         memoryDB.pvp_queue.push({
@@ -1809,23 +1845,40 @@ app.post('/api/pvp/queue/join', (req, res) => {
             exercise: exercise || 'PUSHUP',
             durationSec: durationSec || 30,
             joinedAt: now,
+            lastSeen: now,
             matchedRoomId: null
         });
     }
     res.json({ matched: false });
 });
 
-// Kiểm tra trạng thái chờ ghép trận
+// Kiểm tra trạng thái chờ ghép trận (kèm cập nhật nhịp tim trực tuyến lastSeen)
 app.get('/api/pvp/queue/status', (req, res) => {
     const username = req.query.username || '';
     if (!username) return res.json({ matched: false });
 
+    const now = Date.now();
+    memoryDB.pvp_queue = memoryDB.pvp_queue.filter(q => {
+        const lastActive = q.lastSeen || q.joinedAt || 0;
+        if (q.matchedRoomId) return (now - lastActive) < 30000;
+        return (now - lastActive) <= 6000;
+    });
+
     const selfEntry = memoryDB.pvp_queue.find(q => q.username.toLowerCase() === username.toLowerCase());
-    if (selfEntry && selfEntry.matchedRoomId && memoryDB.pvp_rooms[selfEntry.matchedRoomId]) {
-        const room = memoryDB.pvp_rooms[selfEntry.matchedRoomId];
-        const opp = room.player1.username.toLowerCase() === username.toLowerCase() ? room.player2 : room.player1;
-        memoryDB.pvp_queue = memoryDB.pvp_queue.filter(q => q.username.toLowerCase() !== username.toLowerCase());
-        return res.json({ matched: true, roomId: room.roomId, opponent: opp });
+    if (selfEntry) {
+        selfEntry.lastSeen = now;
+        if (selfEntry.matchedRoomId && memoryDB.pvp_rooms[selfEntry.matchedRoomId]) {
+            const room = memoryDB.pvp_rooms[selfEntry.matchedRoomId];
+            const opp = room.player1.username.toLowerCase() === username.toLowerCase() ? room.player2 : room.player1;
+            memoryDB.pvp_queue = memoryDB.pvp_queue.filter(q => q.username.toLowerCase() !== username.toLowerCase());
+            return res.json({
+                matched: true,
+                roomId: room.roomId,
+                exercise: room.exercise,
+                durationSec: room.durationSec,
+                opponent: opp
+            });
+        }
     }
     res.json({ matched: false });
 });

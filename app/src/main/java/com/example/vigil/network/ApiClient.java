@@ -711,6 +711,18 @@ public class ApiClient {
             String exercise,
             int durationSec
     ) {
+        return joinPvpQueue(username, avatar, level, attackDamage, exercise, durationSec, false);
+    }
+
+    public static PvpRoomSyncState joinPvpQueue(
+            String username,
+            String avatar,
+            int level,
+            int attackDamage,
+            String exercise,
+            int durationSec,
+            boolean resetQueue
+    ) {
         try {
             JsonObject body = new JsonObject();
             body.addProperty("username", username);
@@ -719,16 +731,17 @@ public class ApiClient {
             body.addProperty("attackDamage", attackDamage);
             body.addProperty("exercise", exercise);
             body.addProperty("durationSec", durationSec);
+            body.addProperty("resetQueue", resetQueue);
             RequestBody reqBody = RequestBody.create(jsonMediaType, body.toString());
 
             Request req = new Request.Builder().url(baseUrl + "/api/pvp/queue/join").post(reqBody).build();
             try (Response res = client.newCall(req).execute()) {
-                if (!res.isSuccessful() || res.body() == null) return new PvpRoomSyncState(false, "", "", "🧑‍🎤", 1, 50, 0, 0, 165, "", null);
+                if (!res.isSuccessful() || res.body() == null) return new PvpRoomSyncState(false, "", "", "🧑‍🎤", 1, 50, 0, 0, 165, "", null, "", 0, false);
                 JsonObject obj = gson.fromJson(res.body().string(), JsonObject.class);
                 return parsePvpRoomSync(obj);
             }
         } catch (Exception e) {
-            return new PvpRoomSyncState(false, "", "", "🧑‍🎤", 1, 50, 0, 0, 165, "", null);
+            return new PvpRoomSyncState(false, "", "", "🧑‍🎤", 1, 50, 0, 0, 165, "", null, "", 0, false);
         }
     }
 
@@ -739,12 +752,12 @@ public class ApiClient {
                     .get()
                     .build();
             try (Response res = client.newCall(req).execute()) {
-                if (!res.isSuccessful() || res.body() == null) return new PvpRoomSyncState(false, "", "", "🧑‍🎤", 1, 50, 0, 0, 165, "", null);
+                if (!res.isSuccessful() || res.body() == null) return new PvpRoomSyncState(false, "", "", "🧑‍🎤", 1, 50, 0, 0, 165, "", null, "", 0, false);
                 JsonObject obj = gson.fromJson(res.body().string(), JsonObject.class);
                 return parsePvpRoomSync(obj);
             }
         } catch (Exception e) {
-            return new PvpRoomSyncState(false, "", "", "🧑‍🎤", 1, 50, 0, 0, 165, "", null);
+            return new PvpRoomSyncState(false, "", "", "🧑‍🎤", 1, 50, 0, 0, 165, "", null, "", 0, false);
         }
     }
 
@@ -780,23 +793,28 @@ public class ApiClient {
 
             Request req = new Request.Builder().url(baseUrl + "/api/pvp/room/sync").post(reqBody).build();
             try (Response res = client.newCall(req).execute()) {
-                if (!res.isSuccessful() || res.body() == null) return new PvpRoomSyncState(false, "", "", "🧑‍🎤", 1, 50, 0, 0, 165, "", null);
+                if (!res.isSuccessful() || res.body() == null) return new PvpRoomSyncState(false, "", "", "🧑‍🎤", 1, 50, 0, 0, 165, "", null, "", 0, false);
                 JsonObject obj = gson.fromJson(res.body().string(), JsonObject.class);
                 return parsePvpRoomSync(obj);
             }
         } catch (Exception e) {
-            return new PvpRoomSyncState(false, "", "", "🧑‍🎤", 1, 50, 0, 0, 165, "", null);
+            return new PvpRoomSyncState(false, "", "", "🧑‍🎤", 1, 50, 0, 0, 165, "", null, "", 0, false);
         }
     }
 
     private static PvpRoomSyncState parsePvpRoomSync(JsonObject obj) {
-        if (obj == null || !obj.has("matched") || !obj.get("matched").getAsBoolean()) {
-            return new PvpRoomSyncState(false, "", "", "🧑‍🎤", 1, 50, 0, 0, 165, "", null);
+        if (obj == null) {
+            return new PvpRoomSyncState(false, "", "", "🧑‍🎤", 1, 50, 0, 0, 165, "", null, "", 0, false);
+        }
+        if (!obj.has("matched") || !obj.get("matched").getAsBoolean()) {
+            return new PvpRoomSyncState(false, "", "", "🧑‍🎤", 1, 50, 0, 0, 165, "", null, "", 0, true);
         }
         String roomId = obj.has("roomId") && !obj.get("roomId").isJsonNull() ? obj.get("roomId").getAsString() : "";
+        String roomEx = obj.has("exercise") && !obj.get("exercise").isJsonNull() ? obj.get("exercise").getAsString() : "";
+        int roomDur = obj.has("durationSec") && !obj.get("durationSec").isJsonNull() ? obj.get("durationSec").getAsInt() : 0;
         JsonObject opp = obj.has("opponent") && obj.get("opponent").isJsonObject() ? obj.getAsJsonObject("opponent") : null;
         if (opp == null) {
-            return new PvpRoomSyncState(true, roomId, "Đối Thủ", "🧑‍🎤", 1, 50, 0, 0, 165, "Đang tập", null);
+            return new PvpRoomSyncState(true, roomId, "Đối Thủ", "🧑‍🎤", 1, 50, 0, 0, 165, "Đang tập", null, roomEx, roomDur, true);
         }
         String uName = opp.has("username") && !opp.get("username").isJsonNull() ? opp.get("username").getAsString() : "Đối Thủ";
         String avt = opp.has("avatar") && !opp.get("avatar").isJsonNull() ? opp.get("avatar").getAsString() : "🧑‍🎤";
@@ -807,7 +825,7 @@ public class ApiClient {
         int angle = opp.has("angle") && !opp.get("angle").isJsonNull() ? opp.get("angle").getAsInt() : 165;
         String hint = opp.has("hint") && !opp.get("hint").isJsonNull() ? opp.get("hint").getAsString() : "Đang giữ nhịp tập";
         String frame = opp.has("frameBase64") && !opp.get("frameBase64").isJsonNull() ? opp.get("frameBase64").getAsString() : null;
-        return new PvpRoomSyncState(true, roomId, uName, avt, lvl, dmg, reps, score, angle, hint, frame);
+        return new PvpRoomSyncState(true, roomId, uName, avt, lvl, dmg, reps, score, angle, hint, frame, roomEx, roomDur, true);
     }
 
     public static boolean saveAdminItem(Item item) {
