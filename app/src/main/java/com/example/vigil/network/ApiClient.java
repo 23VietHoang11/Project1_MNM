@@ -580,6 +580,39 @@ public class ApiClient {
         }
     }
 
+    public static boolean updateGuildMemberRole(String actorUsername, int targetUserId, String newRole) {
+        try {
+            JsonObject body = new JsonObject();
+            body.addProperty("actorUsername", actorUsername);
+            body.addProperty("targetUserId", targetUserId);
+            body.addProperty("newRole", newRole);
+            RequestBody reqBody = RequestBody.create(jsonMediaType, body.toString());
+
+            Request req = new Request.Builder().url(baseUrl + "/api/guilds/member/role").post(reqBody).build();
+            try (Response res = client.newCall(req).execute()) {
+                return res.isSuccessful();
+            }
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    public static boolean kickGuildMember(String actorUsername, int targetUserId) {
+        try {
+            JsonObject body = new JsonObject();
+            body.addProperty("actorUsername", actorUsername);
+            body.addProperty("targetUserId", targetUserId);
+            RequestBody reqBody = RequestBody.create(jsonMediaType, body.toString());
+
+            Request req = new Request.Builder().url(baseUrl + "/api/guilds/member/kick").post(reqBody).build();
+            try (Response res = client.newCall(req).execute()) {
+                return res.isSuccessful();
+            }
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     public static boolean updateUserRole(String username, String role) {
         try {
             JsonObject body = new JsonObject();

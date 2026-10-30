@@ -587,6 +587,41 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
         return false
     }
 
+    fun updateGuildMemberRole(targetUserId: Int, newRole: String): Boolean {
+        val (success, msg) = db.updateGuildMemberRole(currentUserId, targetUserId, newRole)
+        toastMessage = msg
+        if (success) {
+            userGuild = db.getUserGuild(currentUserId)
+            allGuilds = db.getAllGuilds(currentUserId)
+            if (userGuild != null) {
+                guildMembers = db.getGuildMembers(userGuild!!.id)
+                pendingGuildApplications = db.getPendingGuildApplications(userGuild!!.id)
+            }
+            ioLaunch {
+                ApiClient.updateGuildMemberRole(name, targetUserId, newRole)
+            }
+            return true
+        }
+        return false
+    }
+
+    fun kickGuildMember(targetUserId: Int): Boolean {
+        val (success, msg) = db.kickGuildMember(currentUserId, targetUserId)
+        toastMessage = msg
+        if (success) {
+            userGuild = db.getUserGuild(currentUserId)
+            allGuilds = db.getAllGuilds(currentUserId)
+            if (userGuild != null) {
+                guildMembers = db.getGuildMembers(userGuild!!.id)
+            }
+            ioLaunch {
+                ApiClient.kickGuildMember(name, targetUserId)
+            }
+            return true
+        }
+        return false
+    }
+
     fun inviteToGuild(inviteeUsername: String): Boolean {
         val (success, msg) = db.inviteToGuild(currentUserId, inviteeUsername)
         toastMessage = msg

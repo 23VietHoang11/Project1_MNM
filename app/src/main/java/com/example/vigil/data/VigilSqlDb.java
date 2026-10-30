@@ -49,7 +49,7 @@ import kotlin.Pair;
 public class VigilSqlDb extends SQLiteOpenHelper {
 
     public static final String DATABASE_NAME = "vigil_app.db";
-    public static final int DATABASE_VERSION = 8;
+    public static final int DATABASE_VERSION = 9;
 
 
     private static volatile VigilSqlDb INSTANCE;
@@ -435,6 +435,16 @@ public class VigilSqlDb extends SQLiteOpenHelper {
         }
         if (oldVersion < 8) {
             ensureUserColumns(db);
+        }
+        if (oldVersion < 9) {
+            ensureUserColumns(db);
+            try {
+                // Thêm các tài khoản hiện có (chưa vào bang nào) vào bang mặc định (guild_id = 1) với chức vụ MEMBER để sẵn sàng quản lý
+                db.execSQL("INSERT OR IGNORE INTO guild_members (guild_id, user_id, role, joined_at) " +
+                        "SELECT 1, u.id, 'MEMBER', date('now') FROM users u " +
+                        "WHERE u.id != 1 AND u.id NOT IN (SELECT user_id FROM guild_members) " +
+                        "AND EXISTS (SELECT 1 FROM guilds WHERE id = 1);");
+            } catch (Exception ignored) {}
         }
     }
 
@@ -1579,19 +1589,129 @@ public class VigilSqlDb extends SQLiteOpenHelper {
             mCursor.close();
             return new Pair<>(false, "Bạn chưa gia nhập bang hội nào!");
         }
-        int guildId = mCursor.getInt(0);
         String role = mCursor.getString(1);
         mCursor.close();
 
         if ("LEADER".equals(role)) {
-            db.delete("guild_members", "guild_id = ?", new String[]{String.valueOf(guildId)});
-            db.delete("guild_invitations", "guild_id = ?", new String[]{String.valueOf(guildId)});
-            db.delete("guilds", "id = ?", new String[]{String.valueOf(guildId)});
-            return new Pair<>(true, "👑 Bạn là chủ bang nên bang hội đã được giải tán thành công.");
+            return new Pair<>(false, "⚠️ Chủ bang không thể rời bang hội! Hãy phong Chủ bang cho thành viên khác trước.");
         } else {
             db.delete("guild_members", "user_id = ?", new String[]{String.valueOf(userId)});
             return new Pair<>(true, "Đã rời khỏi bang hội.");
         }
+    }
+
+    public Pair<Boolean, String> updateGuildMemberRole(int actorUserId, int targetUserId, String newRole) {
+        if (actorUserId == targetUserId) {
+            return new Pair<>(false, "Không thể tự thay đổi chức vụ của chính mình!");
+        }
+        SQLiteDatabase db = getWritableDatabase();
+        Cursor actorCursor = db.rawQuery("SELECT guild_id, role FROM guild_members WHERE user_id = ?", new String[]{String.valueOf(actorUserId)});
+        if (!actorCursor.moveToFirst()) {
+            actorCursor.close();
+            return new Pair<>(false, "Bạn không ở trong bang hội nào!");
+        }
+        int guildId = actorCursor.getInt(0);
+        String actorRole = actorCursor.getString(1);
+        actorCursor.close();
+
+        if (!"LEADER".equals(actorRole)) {
+            return new Pair<>(false, "⚠️ Chỉ Chủ bang mới có quyền phong chức vụ trong bang hội!");
+        }
+
+        Cursor targetCursor = db.rawQuery(
+                "SELECT gm.role, u.username FROM guild_members gm JOIN users u ON gm.user_id = u.id WHERE gm.guild_id = ? AND gm.user_id = ?",
+                new String[]{String.valueOf(guildId), String.valueOf(targetUserId)}
+        );
+        if (!targetCursor.moveToFirst()) {
+            targetCursor.close();
+            return new Pair<>(false, "Thành viên không tồn tại trong bang hội!");
+        }
+        String targetName = targetCursor.getString(1);
+        targetCursor.close();
+
+        db.beginTransaction();
+        try {
+            if ("LEADER".equals(newRole)) {
+                // Nhường chức Chủ bang cho thành viên được chọn, Chủ bang cũ trở thành Thành viên
+                ContentValues gCv = new ContentValues();
+                gCv.put("leader_id", targetUserId);
+                db.update("guilds", gCv, "id = ?", new String[]{String.valueOf(guildId)});
+
+                ContentValues oldLeaderCv = new ContentValues();
+                oldLeaderCv.put("role", "MEMBER");
+                db.update("guild_members", oldLeaderCv, "guild_id = ? AND user_id = ?",
+                        new String[]{String.valueOf(guildId), String.valueOf(actorUserId)});
+
+                ContentValues newLeaderCv = new ContentValues();
+                newLeaderCv.put("role", "LEADER");
+                db.update("guild_members", newLeaderCv, "guild_id = ? AND user_id = ?",
+                        new String[]{String.valueOf(guildId), String.valueOf(targetUserId)});
+
+                db.setTransactionSuccessful();
+                return new Pair<>(true, "👑 Đã phong " + targetName + " làm Chủ bang mới!");
+            } else if ("VICE_LEADER".equals(newRole)) {
+                ContentValues cv = new ContentValues();
+                cv.put("role", "VICE_LEADER");
+                db.update("guild_members", cv, "guild_id = ? AND user_id = ?",
+                        new String[]{String.valueOf(guildId), String.valueOf(targetUserId)});
+                db.setTransactionSuccessful();
+                return new Pair<>(true, "🛡️ Đã phong " + targetName + " làm Phó bang!");
+            } else {
+                ContentValues cv = new ContentValues();
+                cv.put("role", "MEMBER");
+                db.update("guild_members", cv, "guild_id = ? AND user_id = ?",
+                        new String[]{String.valueOf(guildId), String.valueOf(targetUserId)});
+                db.setTransactionSuccessful();
+                return new Pair<>(true, "Đã chuyển " + targetName + " về chức vụ Thành viên.");
+            }
+        } finally {
+            db.endTransaction();
+        }
+    }
+
+    public Pair<Boolean, String> kickGuildMember(int actorUserId, int targetUserId) {
+        if (actorUserId == targetUserId) {
+            return new Pair<>(false, "Bạn không thể tự trục xuất chính mình!");
+        }
+        SQLiteDatabase db = getWritableDatabase();
+        Cursor actorCursor = db.rawQuery("SELECT guild_id, role FROM guild_members WHERE user_id = ?", new String[]{String.valueOf(actorUserId)});
+        if (!actorCursor.moveToFirst()) {
+            actorCursor.close();
+            return new Pair<>(false, "Bạn không ở trong bang hội nào!");
+        }
+        int guildId = actorCursor.getInt(0);
+        String actorRole = actorCursor.getString(1);
+        actorCursor.close();
+
+        if (!"LEADER".equals(actorRole) && !"VICE_LEADER".equals(actorRole)) {
+            return new Pair<>(false, "⚠️ Chỉ Chủ bang và Phó bang mới có quyền kick thành viên!");
+        }
+
+        Cursor targetCursor = db.rawQuery(
+                "SELECT gm.role, u.username FROM guild_members gm JOIN users u ON gm.user_id = u.id WHERE gm.guild_id = ? AND gm.user_id = ?",
+                new String[]{String.valueOf(guildId), String.valueOf(targetUserId)}
+        );
+        if (!targetCursor.moveToFirst()) {
+            targetCursor.close();
+            return new Pair<>(false, "Không tìm thấy thành viên trong bang hội!");
+        }
+        String targetRole = targetCursor.getString(0);
+        String targetName = targetCursor.getString(1);
+        targetCursor.close();
+
+        if ("LEADER".equals(targetRole)) {
+            return new Pair<>(false, "⚠️ Không thể trục xuất Chủ bang!");
+        }
+        if ("VICE_LEADER".equals(actorRole) && !"MEMBER".equals(targetRole)) {
+            return new Pair<>(false, "⚠️ Phó bang chỉ có thể trục xuất Thành viên thường!");
+        }
+
+        int rows = db.delete("guild_members", "guild_id = ? AND user_id = ?",
+                new String[]{String.valueOf(guildId), String.valueOf(targetUserId)});
+        if (rows > 0) {
+            return new Pair<>(true, "🚫 Đã trục xuất " + targetName + " ra khỏi bang hội!");
+        }
+        return new Pair<>(false, "Không thể trục xuất thành viên!");
     }
 
     public Guild getUserGuild(int userId) {
@@ -1629,7 +1749,7 @@ public class VigilSqlDb extends SQLiteOpenHelper {
 
         return new Guild(
                 guildId, name, badge, slogan, leaderId, leaderName, level, count, reps,
-                true, "LEADER".equals(role)
+                true, "LEADER".equals(role), false, role
         );
     }
 
@@ -1666,11 +1786,13 @@ public class VigilSqlDb extends SQLiteOpenHelper {
             boolean hasPending = cApp.moveToFirst();
             cApp.close();
 
+            boolean isMyGuild = userGuild != null && userGuild.getId() == gId;
             list.add(new Guild(
                     gId, gName, badge, slogan, leaderId, leaderName, level, count, reps,
-                    userGuild != null && userGuild.getId() == gId,
-                    userGuild != null && userGuild.getId() == gId && userGuild.isUserLeader(),
-                    hasPending
+                    isMyGuild,
+                    isMyGuild && userGuild.isUserLeader(),
+                    hasPending,
+                    isMyGuild ? userGuild.getUserRole() : ""
             ));
         }
         cursor.close();
@@ -1684,7 +1806,7 @@ public class VigilSqlDb extends SQLiteOpenHelper {
                 "FROM guild_members gm " +
                 "JOIN users u ON gm.user_id = u.id " +
                 "WHERE gm.guild_id = ? " +
-                "ORDER BY CASE WHEN gm.role = 'LEADER' THEN 1 ELSE 2 END, u.total_reps DESC";
+                "ORDER BY CASE WHEN gm.role = 'LEADER' THEN 1 WHEN gm.role = 'VICE_LEADER' THEN 2 ELSE 3 END, u.total_reps DESC";
         Cursor cursor = db.rawQuery(query, new String[]{String.valueOf(guildId)});
         while (cursor.moveToNext()) {
             list.add(new GuildMember(

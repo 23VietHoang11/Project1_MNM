@@ -462,6 +462,16 @@ fun GuildScreen(vm: GameViewModel, nav: NavController? = null) {
 
                 val myGuild = vm.userGuild
                 if (myGuild != null) {
+                    val myRoleColor = when (myGuild.userRole) {
+                        "LEADER" -> Color(0xFFFF4D4D)
+                        "VICE_LEADER" -> Color(0xFF22C55E)
+                        else -> Color(0xFF9CA3AF)
+                    }
+                    val myRoleLabel = when (myGuild.userRole) {
+                        "LEADER" -> "👑 CHỦ BANG"
+                        "VICE_LEADER" -> "🛡️ PHÓ BANG"
+                        else -> "⚔️ THÀNH VIÊN"
+                    }
                     // Hiển thị bang hội hiện tại của người chơi
                     VCard(border = C.Yellow) {
                         Row(
@@ -479,20 +489,22 @@ fun GuildScreen(vm: GameViewModel, nav: NavController? = null) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text(myGuild.name, color = C.Text, fontWeight = FontWeight.Bold, fontSize = 20.sp)
                                     Spacer(Modifier.width(6.dp))
-                                    if (myGuild.isUserLeader) {
-                                        Text(
-                                            "CHỦ BANG",
-                                            color = C.Yellow,
-                                            fontSize = 10.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            modifier = Modifier
-                                                .clip(RoundedCornerShape(4.dp))
-                                                .background(C.Yellow.copy(alpha = 0.2f))
-                                                .padding(horizontal = 5.dp, vertical = 2.dp)
-                                        )
-                                    }
+                                    Text(
+                                        myRoleLabel,
+                                        color = myRoleColor,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(4.dp))
+                                            .background(myRoleColor.copy(alpha = 0.18f))
+                                            .border(1.dp, myRoleColor.copy(alpha = 0.5f), RoundedCornerShape(4.dp))
+                                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
                                 }
-                                Text("Cấp ${myGuild.level} • Chủ bang: ${myGuild.leaderName}", color = C.Muted, fontSize = 12.sp)
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("Cấp ${myGuild.level} • Chủ bang: ", color = C.Muted, fontSize = 12.sp)
+                                    Text(myGuild.leaderName, color = Color(0xFFFF4D4D), fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                }
                                 if (myGuild.slogan.isNotBlank()) {
                                     Spacer(Modifier.height(4.dp))
                                     Quote(myGuild.slogan)
@@ -523,87 +535,215 @@ fun GuildScreen(vm: GameViewModel, nav: NavController? = null) {
                             ) {
                                 Text("✉️ Mời hảo hữu", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                             }
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(Color(0xFF331C26))
-                                    .border(1.dp, Color(0xFFEF4444).copy(alpha = 0.6f), RoundedCornerShape(12.dp))
-                                    .clickable { vm.leaveGuild() }
-                                    .padding(horizontal = 14.dp, vertical = 10.dp)
+                            if (myGuild.isUserLeader) {
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(Color(0xFF2A2438))
+                                        .border(1.dp, Color(0xFF6B7280).copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                                        .clickable { vm.leaveGuild() }
+                                        .padding(horizontal = 12.dp, vertical = 10.dp)
                                 ) {
-                                    Text(if (myGuild.isUserLeader) "Giải tán bang" else "Rời bang", color = Color(0xFFFCA5A5), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    Text("🔒 Không thể rời bang", color = Color(0xFF9CA3AF), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                            } else {
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(Color(0xFF331C26))
+                                        .border(1.dp, Color(0xFFEF4444).copy(alpha = 0.6f), RoundedCornerShape(12.dp))
+                                        .clickable { vm.leaveGuild() }
+                                        .padding(horizontal = 14.dp, vertical = 10.dp)
+                                ) {
+                                    Text("🚪 Rời bang", color = Color(0xFFFCA5A5), fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                 }
                             }
                         }
+                    }
 
 
 
-                        // Danh sách đơn xin gia nhập bang hội cần phê duyệt (Dành cho Chủ Bang)
-                        if (myGuild.isUserLeader && vm.pendingGuildApplications.isNotEmpty()) {
-                            Spacer(Modifier.height(14.dp))
-                            SectionLabel("📋 Đơn xin gia nhập bang (${vm.pendingGuildApplications.size})")
-                            vm.pendingGuildApplications.forEach { app ->
-                                VCard(border = C.Yellow, modifier = Modifier.padding(bottom = 8.dp)) {
-                                    Row(
-                                        Modifier.fillMaxWidth(),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Box(Modifier.size(42.dp).clip(CircleShape).background(Color(0xFF2C2450)), contentAlignment = Alignment.Center) {
-                                            Text(app.avatar, fontSize = 22.sp)
+                    // Danh sách đơn xin gia nhập bang hội cần phê duyệt (Dành cho Chủ Bang)
+                    if (myGuild.isUserLeader && vm.pendingGuildApplications.isNotEmpty()) {
+                        Spacer(Modifier.height(14.dp))
+                        SectionLabel("📋 Đơn xin gia nhập bang (${vm.pendingGuildApplications.size})")
+                        vm.pendingGuildApplications.forEach { app ->
+                            VCard(border = C.Yellow, modifier = Modifier.padding(bottom = 8.dp)) {
+                                Row(
+                                    Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(Modifier.size(42.dp).clip(CircleShape).background(Color(0xFF2C2450)), contentAlignment = Alignment.Center) {
+                                        Text(app.avatar, fontSize = 22.sp)
+                                    }
+                                    Spacer(Modifier.width(10.dp))
+                                    Column(Modifier.weight(1f)) {
+                                        Text(app.username, color = C.Text, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                                        Text("Cấp ${app.level} • ${app.totalReps} Reps", color = C.Muted, fontSize = 12.sp)
+                                    }
+                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(C.Green)
+                                                .clickable { vm.approveGuildApplication(app.id) }
+                                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                                        ) {
+                                            Text("✓ Duyệt", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                         }
-                                        Spacer(Modifier.width(10.dp))
-                                        Column(Modifier.weight(1f)) {
-                                            Text(app.username, color = C.Text, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                                            Text("Cấp ${app.level} • ${app.totalReps} Reps", color = C.Muted, fontSize = 12.sp)
-                                        }
-                                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .clip(RoundedCornerShape(8.dp))
-                                                    .background(C.Green)
-                                                    .clickable { vm.approveGuildApplication(app.id) }
-                                                    .padding(horizontal = 10.dp, vertical = 6.dp)
-                                            ) {
-                                                Text("✓ Duyệt", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                            }
-                                            Box(
-                                                modifier = Modifier
-                                                    .clip(RoundedCornerShape(8.dp))
-                                                    .background(Color(0xFF301C24))
-                                                    .border(1.dp, Color(0xFFEF4444).copy(alpha = 0.5f), RoundedCornerShape(8.dp))
-                                                    .clickable { vm.rejectGuildApplication(app.id) }
-                                                    .padding(horizontal = 10.dp, vertical = 6.dp)
-                                            ) {
-                                                Text("✕ Từ chối", color = Color(0xFFFCA5A5), fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                            }
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(Color(0xFF301C24))
+                                                .border(1.dp, Color(0xFFEF4444).copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                                                .clickable { vm.rejectGuildApplication(app.id) }
+                                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                                        ) {
+                                            Text("✕ Từ chối", color = Color(0xFFFCA5A5), fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                         }
                                     }
                                 }
                             }
                         }
+                    }
 
-                        Spacer(Modifier.height(14.dp))
-                        SectionLabel("Thành viên bang hội (${vm.guildMembers.size})")
+                    Spacer(Modifier.height(14.dp))
+                    SectionLabel("Thành viên bang hội (${vm.guildMembers.size})")
 
                     vm.guildMembers.forEach { member ->
-                        VCard(Modifier.padding(bottom = 8.dp)) {
-                            Row(
-                                Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Box(Modifier.size(40.dp).clip(CircleShape).background(Color(0xFF26214B)), contentAlignment = Alignment.Center) {
-                                    Text(member.avatar, fontSize = 20.sp)
-                                }
-                                Spacer(Modifier.width(10.dp))
-                                Column(Modifier.weight(1f)) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text(member.username, color = C.Text, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                                        if (member.role == "LEADER") {
-                                            Spacer(Modifier.width(6.dp))
-                                            Text("👑 Chủ bang", color = C.Yellow, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        val memberRoleColor = when (member.role) {
+                            "LEADER" -> Color(0xFFFF4D4D)      // Chủ bang: màu đỏ
+                            "VICE_LEADER" -> Color(0xFF22C55E) // Phó bang: màu xanh lá
+                            else -> Color(0xFF9CA3AF)          // Thành viên: màu xám
+                        }
+                        val memberRoleLabel = when (member.role) {
+                            "LEADER" -> "👑 Chủ bang"
+                            "VICE_LEADER" -> "🛡️ Phó bang"
+                            else -> "⚔️ Thành viên"
+                        }
+                        val canLeaderManage = myGuild.isUserLeader && member.userId != vm.currentUserId
+                        val canViceKick = myGuild.isUserViceLeader && member.role == "MEMBER" && member.userId != vm.currentUserId
+
+                        VCard(
+                            border = if (member.role == "LEADER") Color(0xFFFF4D4D).copy(alpha = 0.45f)
+                            else if (member.role == "VICE_LEADER") Color(0xFF22C55E).copy(alpha = 0.45f)
+                            else C.Border,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        ) {
+                            Column(Modifier.fillMaxWidth()) {
+                                Row(
+                                    Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(
+                                        Modifier
+                                            .size(42.dp)
+                                            .clip(CircleShape)
+                                            .background(Color(0xFF26214B))
+                                            .border(1.5.dp, memberRoleColor.copy(alpha = 0.7f), CircleShape),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(member.avatar, fontSize = 20.sp)
+                                    }
+                                    Spacer(Modifier.width(10.dp))
+                                    Column(Modifier.weight(1f)) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(
+                                                member.username,
+                                                color = memberRoleColor,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 15.sp
+                                            )
+                                            Spacer(Modifier.width(8.dp))
+                                            Text(
+                                                memberRoleLabel,
+                                                color = memberRoleColor,
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(6.dp))
+                                                    .background(memberRoleColor.copy(alpha = 0.15f))
+                                                    .border(1.dp, memberRoleColor.copy(alpha = 0.45f), RoundedCornerShape(6.dp))
+                                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                        Spacer(Modifier.height(2.dp))
+                                        Text("Cấp ${member.level} • ${member.totalReps} reps", color = C.Muted, fontSize = 12.sp)
+                                    }
+                                    if (canViceKick) {
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(Color(0xFF3B1822))
+                                                .border(1.dp, Color(0xFFFF4D4D).copy(alpha = 0.6f), RoundedCornerShape(8.dp))
+                                                .clickable { vm.kickGuildMember(member.userId) }
+                                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                                        ) {
+                                            Text("🚫 Kick", color = Color(0xFFFF6B6B), fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                         }
                                     }
-                                    Text("Cấp ${member.level} • ${member.totalReps} reps", color = C.Muted, fontSize = 12.sp)
+                                }
+
+                                if (canLeaderManage) {
+                                    Spacer(Modifier.height(10.dp))
+                                    Row(
+                                        Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        if (member.role == "VICE_LEADER") {
+                                            Box(
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .clip(RoundedCornerShape(8.dp))
+                                                    .background(Color(0xFF262936))
+                                                    .border(1.dp, Color(0xFF9CA3AF).copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                                                    .clickable { vm.updateGuildMemberRole(member.userId, "MEMBER") }
+                                                    .padding(vertical = 7.dp),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Text("⬇️ Hạ Thành Viên", color = Color(0xFFD1D5DB), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                            }
+                                        } else {
+                                            Box(
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .clip(RoundedCornerShape(8.dp))
+                                                    .background(Color(0xFF143325))
+                                                    .border(1.dp, Color(0xFF22C55E).copy(alpha = 0.6f), RoundedCornerShape(8.dp))
+                                                    .clickable { vm.updateGuildMemberRole(member.userId, "VICE_LEADER") }
+                                                    .padding(vertical = 7.dp),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Text("🛡️ Phong Phó Bang", color = Color(0xFF4ADE80), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+
+                                        Box(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(Color(0xFF3A1820))
+                                                .border(1.dp, Color(0xFFFF4D4D).copy(alpha = 0.65f), RoundedCornerShape(8.dp))
+                                                .clickable { vm.updateGuildMemberRole(member.userId, "LEADER") }
+                                                .padding(vertical = 7.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text("👑 Phong Chủ Bang", color = Color(0xFFFF6B6B), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                        }
+
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(Color(0xFF2D161E))
+                                                .border(1.dp, Color(0xFFEF4444).copy(alpha = 0.6f), RoundedCornerShape(8.dp))
+                                                .clickable { vm.kickGuildMember(member.userId) }
+                                                .padding(horizontal = 12.dp, vertical = 7.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text("🚫 Kick", color = Color(0xFFFCA5A5), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
                                 }
                             }
                         }

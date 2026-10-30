@@ -995,6 +995,82 @@ app.post('/api/guilds/reject-application', async (req, res) => {
     }
 });
 
+// G6. CHỦ BANG PHONG CHỨC VỤ (PHÓ BANG / CHỦ BANG / THÀNH VIÊN)
+app.post('/api/guilds/member/role', async (req, res) => {
+    const { actorUsername, targetUserId, newRole } = req.body;
+    try {
+        if (!useFallback) {
+            const [actors] = await pool.query('SELECT id FROM users WHERE username = ?', [actorUsername]);
+            if (actors.length === 0) return res.status(404).json({ error: 'Không tìm thấy người thực hiện!' });
+            const actorId = actors[0].id;
+            const [actorMem] = await pool.query('SELECT guild_id, role FROM guild_members WHERE user_id = ?', [actorId]);
+            if (actorMem.length === 0 || actorMem[0].role !== 'LEADER') {
+                return res.status(403).json({ error: 'Chỉ Chủ bang mới có quyền phong chức!' });
+            }
+            const guildId = actorMem[0].guild_id;
+            if (newRole === 'LEADER') {
+                await pool.query('UPDATE guilds SET leader_id = ? WHERE id = ?', [targetUserId, guildId]);
+                await pool.query('UPDATE guild_members SET role = "MEMBER" WHERE guild_id = ? AND user_id = ?', [guildId, actorId]);
+                await pool.query('UPDATE guild_members SET role = "LEADER" WHERE guild_id = ? AND user_id = ?', [guildId, targetUserId]);
+            } else {
+                await pool.query('UPDATE guild_members SET role = ? WHERE guild_id = ? AND user_id = ?', [newRole, guildId, targetUserId]);
+            }
+            return res.json({ success: true });
+        } else {
+            const actor = memoryDB.users.find(u => u.username.toLowerCase() === (actorUsername || '').toLowerCase());
+            if (!actor) return res.status(404).json({ error: 'Không tìm thấy người thực hiện!' });
+            const actorMem = (memoryDB.guild_members || []).find(m => m.user_id === actor.id);
+            if (!actorMem || actorMem.role !== 'LEADER') {
+                return res.status(403).json({ error: 'Chỉ Chủ bang mới có quyền phong chức!' });
+            }
+            const targetMem = (memoryDB.guild_members || []).find(m => m.guild_id === actorMem.guild_id && m.user_id === parseInt(targetUserId));
+            if (!targetMem) return res.status(404).json({ error: 'Không tìm thấy thành viên!' });
+            if (newRole === 'LEADER') {
+                const g = (memoryDB.guilds || []).find(x => x.id === actorMem.guild_id);
+                if (g) g.leader_id = parseInt(targetUserId);
+                actorMem.role = 'MEMBER';
+                targetMem.role = 'LEADER';
+            } else {
+                targetMem.role = newRole;
+            }
+            return res.json({ success: true });
+        }
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// G7. CHỦ BANG & PHÓ BANG KICK THÀNH VIÊN RA KHỎI BANG
+app.post('/api/guilds/member/kick', async (req, res) => {
+    const { actorUsername, targetUserId } = req.body;
+    try {
+        if (!useFallback) {
+            const [actors] = await pool.query('SELECT id FROM users WHERE username = ?', [actorUsername]);
+            if (actors.length === 0) return res.status(404).json({ error: 'Không tìm thấy người thực hiện!' });
+            const actorId = actors[0].id;
+            const [actorMem] = await pool.query('SELECT guild_id, role FROM guild_members WHERE user_id = ?', [actorId]);
+            if (actorMem.length === 0 || (actorMem[0].role !== 'LEADER' && actorMem[0].role !== 'VICE_LEADER')) {
+                return res.status(403).json({ error: 'Chỉ Chủ bang và Phó bang mới có quyền kick thành viên!' });
+            }
+            await pool.query('DELETE FROM guild_members WHERE guild_id = ? AND user_id = ? AND role != "LEADER"', [actorMem[0].guild_id, targetUserId]);
+            return res.json({ success: true });
+        } else {
+            const actor = memoryDB.users.find(u => u.username.toLowerCase() === (actorUsername || '').toLowerCase());
+            if (!actor) return res.status(404).json({ error: 'Không tìm thấy người thực hiện!' });
+            const actorMem = (memoryDB.guild_members || []).find(m => m.user_id === actor.id);
+            if (!actorMem || (actorMem.role !== 'LEADER' && actorMem.role !== 'VICE_LEADER')) {
+                return res.status(403).json({ error: 'Chỉ Chủ bang và Phó bang mới có quyền kick thành viên!' });
+            }
+            memoryDB.guild_members = (memoryDB.guild_members || []).filter(
+                m => !(m.guild_id === actorMem.guild_id && m.user_id === parseInt(targetUserId) && m.role !== 'LEADER')
+            );
+            return res.json({ success: true });
+        }
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // D. BẢNG XẾP HẠNG THẾ GIỚI (World Leaderboard theo Lực Chiến, Cấp Độ, Reps, Streak)
 app.get('/api/leaderboard', async (req, res) => {
     const { username, sortBy = 'CP' } = req.query;
