@@ -38,6 +38,8 @@ public class PoseCalculator {
     private long holdMs = 0L;
     private long lastTs = 0L;
     private long lastRepTime = 0L;
+    private double baselineShoulderY = -1.0;
+    private double baselineShoulderSpan = -1.0;
 
     private OnRepListener onRepListener;
 
@@ -82,28 +84,28 @@ public class PoseCalculator {
                         L ? PoseLandmark.LEFT_SHOULDER : PoseLandmark.RIGHT_SHOULDER,
                         L ? PoseLandmark.LEFT_ELBOW : PoseLandmark.RIGHT_ELBOW,
                         L ? PoseLandmark.LEFT_WRIST : PoseLandmark.RIGHT_WRIST,
-                        95.0, 155.0
+                        112.0, 145.0
                 );
             case PULLUP:
                 return new PoseConfig(
                         L ? PoseLandmark.LEFT_SHOULDER : PoseLandmark.RIGHT_SHOULDER,
                         L ? PoseLandmark.LEFT_ELBOW : PoseLandmark.RIGHT_ELBOW,
                         L ? PoseLandmark.LEFT_WRIST : PoseLandmark.RIGHT_WRIST,
-                        75.0, 150.0
+                        95.0, 142.0
                 );
             case SQUAT:
                 return new PoseConfig(
                         L ? PoseLandmark.LEFT_HIP : PoseLandmark.RIGHT_HIP,
                         L ? PoseLandmark.LEFT_KNEE : PoseLandmark.RIGHT_KNEE,
                         L ? PoseLandmark.LEFT_ANKLE : PoseLandmark.RIGHT_ANKLE,
-                        105.0, 160.0
+                        120.0, 152.0
                 );
             case SITUP:
                 return new PoseConfig(
                         L ? PoseLandmark.LEFT_SHOULDER : PoseLandmark.RIGHT_SHOULDER,
                         L ? PoseLandmark.LEFT_HIP : PoseLandmark.RIGHT_HIP,
                         L ? PoseLandmark.LEFT_KNEE : PoseLandmark.RIGHT_KNEE,
-                        80.0, 115.0
+                        98.0, 125.0
                 );
             case PLANK:
             default:
@@ -111,7 +113,7 @@ public class PoseCalculator {
                         L ? PoseLandmark.LEFT_SHOULDER : PoseLandmark.RIGHT_SHOULDER,
                         L ? PoseLandmark.LEFT_HIP : PoseLandmark.RIGHT_HIP,
                         L ? PoseLandmark.LEFT_ANKLE : PoseLandmark.RIGHT_ANKLE,
-                        0.0, 160.0
+                        0.0, 145.0
                 );
         }
     }
@@ -128,7 +130,7 @@ public class PoseCalculator {
 
     public static boolean isVisible(PoseLandmark... landmarks) {
         for (PoseLandmark l : landmarks) {
-            if (l == null || l.getInFrameLikelihood() <= 0.5f) {
+            if (l == null || l.getInFrameLikelihood() <= 0.22f) {
                 return false;
             }
         }
@@ -141,13 +143,130 @@ public class PoseCalculator {
         float ls = (leftShoulder != null) ? leftShoulder.getInFrameLikelihood() : 0f;
         float rs = (rightShoulder != null) ? rightShoulder.getInFrameLikelihood() : 0f;
 
-        PoseConfig cfg = getConfig(exercise, ls >= rs);
+        boolean preferLeft = ls >= rs;
+        PoseConfig cfg = getConfig(exercise, preferLeft);
         PoseLandmark a = pose.getPoseLandmark(cfg.a);
         PoseLandmark b = pose.getPoseLandmark(cfg.b);
         PoseLandmark d = pose.getPoseLandmark(cfg.c);
 
+        // Nếu nửa người bên ưu tiên bị khuất, tự động thử nửa người bên kia
         if (!isVisible(a, b, d)) {
-            hint = "Hãy để cả người vào khung hình";
+            PoseConfig altCfg = getConfig(exercise, !preferLeft);
+            PoseLandmark altA = pose.getPoseLandmark(altCfg.a);
+            PoseLandmark altB = pose.getPoseLandmark(altCfg.b);
+            PoseLandmark altD = pose.getPoseLandmark(altCfg.c);
+            if (isVisible(altA, altB, altD)) {
+                cfg = altCfg;
+                a = altA;
+                b = altB;
+                d = altD;
+            }
+        }
+
+        // Fallback thông minh khi đặt điện thoại trên bàn/sàn không lấy hết cổ chân hoặc cổ tay
+        if (!isVisible(a, b, d)) {
+            if (exercise == Exercise.SQUAT) {
+                PoseConfig hipCfg = new PoseConfig(
+                        preferLeft ? PoseLandmark.LEFT_SHOULDER : PoseLandmark.RIGHT_SHOULDER,
+                        preferLeft ? PoseLandmark.LEFT_HIP : PoseLandmark.RIGHT_HIP,
+                        preferLeft ? PoseLandmark.LEFT_KNEE : PoseLandmark.RIGHT_KNEE,
+                        122.0, 152.0
+                );
+                PoseLandmark ha = pose.getPoseLandmark(hipCfg.a);
+                PoseLandmark hb = pose.getPoseLandmark(hipCfg.b);
+                PoseLandmark hd = pose.getPoseLandmark(hipCfg.c);
+                if (isVisible(ha, hb, hd)) {
+                    cfg = hipCfg;
+                    a = ha;
+                    b = hb;
+                    d = hd;
+                }
+            } else if (exercise == Exercise.PLANK) {
+                PoseConfig plankKneeCfg = new PoseConfig(
+                        preferLeft ? PoseLandmark.LEFT_SHOULDER : PoseLandmark.RIGHT_SHOULDER,
+                        preferLeft ? PoseLandmark.LEFT_HIP : PoseLandmark.RIGHT_HIP,
+                        preferLeft ? PoseLandmark.LEFT_KNEE : PoseLandmark.RIGHT_KNEE,
+                        0.0, 140.0
+                );
+                PoseLandmark pa = pose.getPoseLandmark(plankKneeCfg.a);
+                PoseLandmark pb = pose.getPoseLandmark(plankKneeCfg.b);
+                PoseLandmark pd = pose.getPoseLandmark(plankKneeCfg.c);
+                if (isVisible(pa, pb, pd)) {
+                    cfg = plankKneeCfg;
+                    a = pa;
+                    b = pb;
+                    d = pd;
+                }
+            }
+        }
+
+        if (!isVisible(a, b, d)) {
+            // Fallback 2: Khi người chơi đặt điện thoại trước mặt (Video Call) chỉ thấy đầu & 2 vai (cổ tay/cổ chân nằm ngoài khung hình)
+            if (isVisible(leftShoulder, rightShoulder)) {
+                double midY = (leftShoulder.getPosition().y + rightShoulder.getPosition().y) * 0.5;
+                double span = Math.hypot(
+                        leftShoulder.getPosition().x - rightShoulder.getPosition().x,
+                        leftShoulder.getPosition().y - rightShoulder.getPosition().y
+                );
+                if (span > 8.0) {
+                    if (baselineShoulderY < 0.0 || midY < baselineShoulderY) {
+                        baselineShoulderY = midY;
+                    } else {
+                        baselineShoulderY = baselineShoulderY * 0.992 + midY * 0.008;
+                    }
+                    if (baselineShoulderSpan < 0.0 || span < baselineShoulderSpan) {
+                        baselineShoulderSpan = span;
+                    } else {
+                        baselineShoulderSpan = baselineShoulderSpan * 0.992 + span * 0.008;
+                    }
+
+                    double dropRatio = (midY - baselineShoulderY) / Math.max(span, 20.0);
+                    double zoomRatio = (span - baselineShoulderSpan) / Math.max(baselineShoulderSpan, 20.0);
+                    double motionRatio = Math.max(dropRatio / 0.22, zoomRatio / 0.16);
+                    double clamped = Math.max(0.0, Math.min(1.0, motionRatio));
+                    double virtualAngle = 165.0 - (clamped * 75.0); // 165° (đứng/đẩy thẳng) -> 90° (hạ người xuống)
+                    angleNow = (int) virtualAngle;
+
+                    if (exercise == Exercise.PLANK) {
+                        long now = System.currentTimeMillis();
+                        if (lastTs != 0L) {
+                            holdMs += Math.min(now - lastTs, 500L);
+                        }
+                        lastTs = now;
+                        int oldScore = holdSeconds / 2;
+                        holdSeconds = (int) (holdMs / 1000L);
+                        int newScore = holdSeconds / 2;
+                        if (newScore > oldScore && newScore > 0 && onRepListener != null) {
+                            onRepListener.onRep(newScore);
+                        }
+                        hint = "Giữ vững tư thế Plank!";
+                        return;
+                    }
+
+                    if (virtualAngle <= 112.0 && !contracted) {
+                        contracted = true;
+                        hint = "Tốt! Giờ đẩy/nâng người lên";
+                    } else if (virtualAngle >= 145.0 && contracted) {
+                        long now = System.currentTimeMillis();
+                        if (now - lastRepTime >= 380L) {
+                            contracted = false;
+                            reps++;
+                            lastRepTime = now;
+                            hint = "+1 rep!";
+                            if (onRepListener != null) {
+                                onRepListener.onRep(reps);
+                            }
+                        }
+                    } else if (!contracted) {
+                        hint = "Hạ người xuống (" + angleNow + "°)";
+                    } else {
+                        hint = "Đẩy/nâng người lên (" + angleNow + "°)";
+                    }
+                    return;
+                }
+            }
+
+            hint = "Hãy để người vào khung hình";
             lastTs = 0L;
             return;
         }
@@ -165,9 +284,8 @@ public class PoseCalculator {
         angleNow = (int) ang;
 
         if (exercise == Exercise.PLANK) {
-            boolean horizontal = Math.abs(a.getPosition().y - b.getPosition().y) < Math.abs(a.getPosition().x - b.getPosition().x);
             long now = System.currentTimeMillis();
-            if (ang > cfg.extend && horizontal) {
+            if (ang > cfg.extend) {
                 if (lastTs != 0L) {
                     holdMs += Math.min(now - lastTs, 500L);
                 }
@@ -183,27 +301,17 @@ public class PoseCalculator {
                 hint = "Giữ vững! Lưng thẳng";
             } else {
                 lastTs = 0L;
-                hint = "Giữ thẳng người từ vai tới gót";
+                hint = "Giữ thẳng người từ vai tới hông";
             }
             return;
         }
 
-        if (exercise == Exercise.PUSHUP) {
-            PoseLandmark hip = pose.getPoseLandmark(
-                    (cfg.a == PoseLandmark.LEFT_SHOULDER) ? PoseLandmark.LEFT_HIP : PoseLandmark.RIGHT_HIP
-            );
-            if (hip != null && Math.abs(a.getPosition().y - hip.getPosition().y) > Math.abs(a.getPosition().x - hip.getPosition().x)) {
-                hint = "Vào tư thế chống đẩy (quay nghiêng người)";
-                return;
-            }
-        }
-
-        if (ang < cfg.contract && !contracted) {
+        if (ang <= cfg.contract && !contracted) {
             contracted = true;
-            hint = "Tốt! Giờ đẩy lên";
-        } else if (ang > cfg.extend && contracted) {
+            hint = "Tốt! Giờ đẩy/nâng người lên";
+        } else if (ang >= cfg.extend && contracted) {
             long now = System.currentTimeMillis();
-            if (now - lastRepTime >= 600L) {
+            if (now - lastRepTime >= 380L) {
                 contracted = false;
                 reps++;
                 lastRepTime = now;
@@ -213,7 +321,9 @@ public class PoseCalculator {
                 }
             }
         } else if (!contracted) {
-            hint = "Hạ xuống thấp hơn";
+            hint = "Hạ xuống thêm chút nữa (" + angleNow + "° -> " + (int) cfg.contract + "°)";
+        } else {
+            hint = "Nâng thẳng lên (" + angleNow + "° -> " + (int) cfg.extend + "°)";
         }
     }
 }

@@ -952,6 +952,7 @@ private fun PvpMessengerVideoBattleView(
     var remainingSec by remember(durationSec) { mutableIntStateOf(durationSec) }
     var useFrontCamera by remember { mutableStateOf(true) }
     var actuallyMirrored by remember { mutableStateOf(true) }
+    var autoFlippedOnce by remember { mutableStateOf(false) }
     var swapPipView by remember { mutableStateOf(false) }
     var matchEnded by remember { mutableStateOf(false) }
 
@@ -971,23 +972,17 @@ private fun PvpMessengerVideoBattleView(
     val latestOnForfeitMatch by rememberUpdatedState(onForfeitMatch)
 
     fun triggerSelfForfeit() {
-        if (matchEnded) return
         matchEnded = true
+        if (remainingSec <= 0) {
+            latestOnFinishCall()
+            return
+        }
         val finalReps = latestP1Reps
         val finalScore = latestP1Score
         scope.launch(Dispatchers.IO) {
             ApiClient.forfeitPvpRoom(roomId, p1Name, finalReps, finalScore)
         }
         latestOnForfeitMatch(p1Name)
-    }
-
-    // Watchdog tự động đổi sang Camera còn lại nếu sau 2.2 giây chưa nhận được khung hình nào (khắc phục triệt để lỗi đen cam)
-    LaunchedEffect(cameraGranted) {
-        if (!cameraGranted) return@LaunchedEffect
-        delay(2200L)
-        if (mySelfBitmap == null && myPoseFrame == null) {
-            useFrontCamera = !useFrontCamera
-        }
     }
 
     // Nhận diện rep hoàn toàn tự động từ Camera AI Pose của bản thân
@@ -1014,41 +1009,43 @@ private fun PvpMessengerVideoBattleView(
         }
     }
 
-    // Đồng hồ đếm ngược thời gian trận đấu + Đồng bộ chốt điểm cuối trận trước khi tổng kết Thắng/Thua
-    LaunchedEffect(remainingSec, matchEnded) {
-        if (matchEnded) return@LaunchedEffect
+    // Đồng hồ đếm ngược thời gian trận đấu (Tuyệt đối KHÔNG đưa matchEnded vào key của LaunchedEffect để tránh tự hủy Coroutine khi về 00:00!)
+    LaunchedEffect(remainingSec) {
         if (remainingSec <= 0) {
-            matchEnded = true
-            if (roomId.isNotBlank()) {
-                repeat(2) {
-                    val finalSync = withContext(Dispatchers.IO) {
-                        ApiClient.syncPvpRoom(
-                            roomId,
-                            p1Name,
-                            latestP1Reps,
-                            latestP1Score,
-                            counter.angleNow,
-                            counter.hint,
-                            null
-                        )
-                    }
-                    if (finalSync.matched) {
-                        latestOnRemoteSync(
-                            finalSync.opponentReps,
-                            finalSync.opponentScore,
-                            finalSync.opponentAngle,
-                            finalSync.opponentHint,
-                            finalSync.opponentFrameBase64
-                        )
-                        if (finalSync.forfeitedBy.isNotBlank()) {
-                            latestOnForfeitMatch(finalSync.forfeitedBy)
-                            return@LaunchedEffect
+            if (!matchEnded) {
+                matchEnded = true
+                if (roomId.isNotBlank()) {
+                    runCatching {
+                        kotlinx.coroutines.withTimeoutOrNull(750L) {
+                            val finalSync = withContext(Dispatchers.IO) {
+                                ApiClient.syncPvpRoom(
+                                    roomId,
+                                    p1Name,
+                                    latestP1Reps,
+                                    latestP1Score,
+                                    counter.angleNow,
+                                    counter.hint,
+                                    null
+                                )
+                            }
+                            if (finalSync.matched) {
+                                latestOnRemoteSync(
+                                    finalSync.opponentReps,
+                                    finalSync.opponentScore,
+                                    finalSync.opponentAngle,
+                                    finalSync.opponentHint,
+                                    finalSync.opponentFrameBase64
+                                )
+                                if (finalSync.forfeitedBy.isNotBlank()) {
+                                    latestOnForfeitMatch(finalSync.forfeitedBy)
+                                    return@withTimeoutOrNull
+                                }
+                            }
                         }
                     }
-                    delay(180L)
                 }
+                latestOnFinishCall()
             }
-            latestOnFinishCall()
             return@LaunchedEffect
         }
         delay(1000L)
@@ -1104,26 +1101,6 @@ private fun PvpMessengerVideoBattleView(
 
     Box(Modifier.fillMaxSize().background(Color(0xFF080711))) {
         // =========================================================================
-        // 0. ENGINE CAMERAX CHẠY NGẦM LIÊN TỤC (ĐẢM BẢO CAM BẢN THÂN LUÔN HIỆN 100% & KHÔNG BỊ ĐEN KHI ĐỔI KHUNG PIP)
-        // =========================================================================
-        if (cameraGranted) {
-            PvpSafeCameraPreview(
-                preferFrontCamera = useFrontCamera,
-                onCameraFacingBound = { isFront -> actuallyMirrored = isFront },
-                onPose = { pose, w, h ->
-                    counter.update(pose)
-                    myPoseFrame = PvpPoseFrame(pose, w, h)
-                },
-                onSelfFrameReady = { bmp, b64 ->
-                    mySelfBitmap = bmp
-                    myLatestFrameBase64 = b64
-                    myFrameSeq += 1
-                },
-                modifier = Modifier.size(1.dp)
-            )
-        }
-
-        // =========================================================================
         // A. KHUNG HÌNH VIDEO CHÍNH TOÀN MÀN HÌNH (MẶC ĐỊNH: HÌNH ẢNH CỦA ĐỐI PHƯƠNG)
         // =========================================================================
         if (!swapPipView) {
@@ -1141,10 +1118,27 @@ private fun PvpMessengerVideoBattleView(
         } else {
             SelfLiveCameraFeed(
                 cameraGranted = cameraGranted,
+                useFrontCamera = useFrontCamera,
                 isMirrored = actuallyMirrored,
                 playerAvatar = p1Avatar,
                 selfBitmap = mySelfBitmap,
                 poseFrame = myPoseFrame,
+                onCameraFacingBound = { isFront -> actuallyMirrored = isFront },
+                onAutoFlipCamera = {
+                    if (!autoFlippedOnce) {
+                        autoFlippedOnce = true
+                        useFrontCamera = !useFrontCamera
+                    }
+                },
+                onPoseDetected = { pose, w, h ->
+                    counter.update(pose)
+                    myPoseFrame = PvpPoseFrame(pose, w, h)
+                },
+                onSelfFrameReady = { bmp, b64 ->
+                    if (bmp != null) mySelfBitmap = bmp
+                    myLatestFrameBase64 = b64
+                    myFrameSeq += 1
+                },
                 isFullScreen = true,
                 modifier = Modifier.fillMaxSize()
             )
@@ -1325,10 +1319,27 @@ private fun PvpMessengerVideoBattleView(
             if (!swapPipView) {
                 SelfLiveCameraFeed(
                     cameraGranted = cameraGranted,
+                    useFrontCamera = useFrontCamera,
                     isMirrored = actuallyMirrored,
                     playerAvatar = p1Avatar,
                     selfBitmap = mySelfBitmap,
                     poseFrame = myPoseFrame,
+                    onCameraFacingBound = { isFront -> actuallyMirrored = isFront },
+                    onAutoFlipCamera = {
+                        if (!autoFlippedOnce) {
+                            autoFlippedOnce = true
+                            useFrontCamera = !useFrontCamera
+                        }
+                    },
+                    onPoseDetected = { pose, w, h ->
+                        counter.update(pose)
+                        myPoseFrame = PvpPoseFrame(pose, w, h)
+                    },
+                    onSelfFrameReady = { bmp, b64 ->
+                        if (bmp != null) mySelfBitmap = bmp
+                        myLatestFrameBase64 = b64
+                        myFrameSeq += 1
+                    },
                     isFullScreen = false,
                     modifier = Modifier.fillMaxSize()
                 )
@@ -1671,30 +1682,47 @@ private fun OpponentLiveVideoFeed(
 @Composable
 private fun SelfLiveCameraFeed(
     cameraGranted: Boolean,
+    useFrontCamera: Boolean,
     isMirrored: Boolean,
     playerAvatar: String,
     selfBitmap: Bitmap?,
     poseFrame: PvpPoseFrame?,
+    onCameraFacingBound: (Boolean) -> Unit,
+    onAutoFlipCamera: () -> Unit,
+    onPoseDetected: (Pose, Int, Int) -> Unit,
+    onSelfFrameReady: (Bitmap?, String) -> Unit,
     isFullScreen: Boolean,
     modifier: Modifier = Modifier
 ) {
     Box(modifier.background(Color(0xFF0F172A))) {
-        if (cameraGranted && selfBitmap != null) {
-            Image(
-                bitmap = selfBitmap.asImageBitmap(),
-                contentDescription = "Self Live Camera",
-                contentScale = ContentScale.Crop,
-                filterQuality = FilterQuality.Medium,
+        if (cameraGranted) {
+            // 1. Luôn hiển thị trực tiếp Camera PreviewView thật tại đúng khung hình (PiP hoặc FullScreen)
+            PvpSafeCameraPreview(
+                preferFrontCamera = useFrontCamera,
+                onCameraFacingBound = onCameraFacingBound,
+                onAutoFlipCamera = onAutoFlipCamera,
+                onPose = onPoseDetected,
+                onSelfFrameReady = onSelfFrameReady,
                 modifier = Modifier.fillMaxSize()
             )
-            // Vẽ khung xương AI Pose lên trên Camera của bản thân
+            // 2. Lớp phủ Bitmap dự phòng giúp khung PiP bo góc không bao giờ bị đen trên mọi GPU Android
+            if (selfBitmap != null) {
+                Image(
+                    bitmap = selfBitmap.asImageBitmap(),
+                    contentDescription = "Self Live Camera",
+                    contentScale = ContentScale.Crop,
+                    filterQuality = FilterQuality.Medium,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+            // 3. Vẽ khung xương AI Pose lên trên Camera của bản thân
             Canvas(Modifier.fillMaxSize()) {
                 val f = poseFrame ?: return@Canvas
                 if (f.w <= 0 || f.h <= 0) return@Canvas
                 val s = min(size.width / f.w, size.height / f.h)
                 val ox = (size.width - f.w * s) / 2
                 val oy = (size.height - f.h * s) / 2
-                fun pt(t: Int): Offset? = f.pose.getPoseLandmark(t)?.takeIf { it.inFrameLikelihood > 0.5f }?.let {
+                fun pt(t: Int): Offset? = f.pose.getPoseLandmark(t)?.takeIf { it.inFrameLikelihood > 0.25f }?.let {
                     val x = if (isMirrored) f.w - it.position.x else it.position.x
                     Offset(ox + x * s, oy + it.position.y * s)
                 }
@@ -1720,7 +1748,7 @@ private fun SelfLiveCameraFeed(
                 Text(playerAvatar, fontSize = if (isFullScreen) 48.sp else 28.sp)
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    if (cameraGranted) "Đang mở Camera..." else "Camera của bạn",
+                    "Camera của bạn",
                     color = C.Muted,
                     fontSize = 10.sp,
                     textAlign = TextAlign.Center
@@ -1935,8 +1963,9 @@ private fun PvpModernResultView(
 private fun PvpSafeCameraPreview(
     preferFrontCamera: Boolean,
     onCameraFacingBound: (Boolean) -> Unit,
+    onAutoFlipCamera: () -> Unit,
     onPose: (Pose, Int, Int) -> Unit,
-    onSelfFrameReady: (Bitmap, String) -> Unit,
+    onSelfFrameReady: (Bitmap?, String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val ctx = LocalContext.current
@@ -1949,10 +1978,57 @@ private fun PvpSafeCameraPreview(
         )
     }
     val executor = remember { Executors.newSingleThreadExecutor() }
-    val previewView = remember { PreviewView(ctx) }
+    val previewView = remember {
+        PreviewView(ctx).apply {
+            scaleType = PreviewView.ScaleType.FILL_CENTER
+            implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+        }
+    }
     val latestOnFacing by rememberUpdatedState(onCameraFacingBound)
+    val latestOnAutoFlip by rememberUpdatedState(onAutoFlipCamera)
     val latestOnPose by rememberUpdatedState(onPose)
     val latestOnSelfFrame by rememberUpdatedState(onSelfFrameReady)
+
+    var receivedAnyFrame by remember(preferFrontCamera) { mutableStateOf(false) }
+    var lastAnalyzerCaptureMs by remember { mutableLongStateOf(0L) }
+
+    // 1. Watchdog tự động đổi sang Camera Sau/Trước nếu Camera đang chọn không trả về khung hình nào sau 1.5 giây
+    LaunchedEffect(preferFrontCamera) {
+        delay(1500L)
+        if (!receivedAnyFrame) {
+            latestOnAutoFlip()
+        }
+    }
+
+    // 2. Luồng dự phòng: Nếu proxy.toBitmap() không khả dụng trên một số dòng máy, lấy trực tiếp từ previewView.bitmap
+    LaunchedEffect(previewView) {
+        while (true) {
+            delay(180L)
+            if (System.currentTimeMillis() - lastAnalyzerCaptureMs > 360L) {
+                val bmp = runCatching { previewView.bitmap }.getOrNull()
+                if (bmp != null) {
+                    receivedAnyFrame = true
+                    val encoded = withContext(Dispatchers.Default) {
+                        runCatching {
+                            val scaled = Bitmap.createScaledBitmap(bmp, 240, 320, true)
+                            val out = ByteArrayOutputStream()
+                            scaled.compress(Bitmap.CompressFormat.JPEG, 58, out)
+                            if (out.size() > 14000) {
+                                out.reset()
+                                scaled.compress(Bitmap.CompressFormat.JPEG, 46, out)
+                            }
+                            if (scaled != bmp) scaled.recycle()
+                            bmp.recycle()
+                            Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
+                        }.getOrNull()
+                    }
+                    if (!encoded.isNullOrBlank()) {
+                        latestOnSelfFrame(null, encoded)
+                    }
+                }
+            }
+        }
+    }
 
     DisposableEffect(preferFrontCamera) {
         val future = ProcessCameraProvider.getInstance(ctx)
@@ -1970,8 +2046,9 @@ private fun PvpSafeCameraPreview(
                 var lastFrameTimeMs = 0L
 
                 analysis.setAnalyzer(executor) { proxy ->
+                    receivedAnyFrame = true
                     val now = System.currentTimeMillis()
-                    if (now - lastFrameTimeMs >= 115L) {
+                    if (now - lastFrameTimeMs >= 120L) {
                         lastFrameTimeMs = now
                         runCatching {
                             val rawBmp = proxy.toBitmap()
@@ -1991,6 +2068,7 @@ private fun PvpSafeCameraPreview(
                             val b64 = Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
                             if (rotated != rawBmp && rotated != scaled) rotated.recycle()
                             if (rawBmp != scaled) rawBmp.recycle()
+                            lastAnalyzerCaptureMs = now
                             latestOnSelfFrame(scaled, b64)
                         }
                     }
@@ -2011,6 +2089,7 @@ private fun PvpSafeCameraPreview(
 
                 val primarySelector = if (preferFrontCamera) CameraSelector.DEFAULT_FRONT_CAMERA else CameraSelector.DEFAULT_BACK_CAMERA
                 val fallbackSelector = if (preferFrontCamera) CameraSelector.DEFAULT_BACK_CAMERA else CameraSelector.DEFAULT_FRONT_CAMERA
+                val anyCameraSelector = CameraSelector.Builder().build()
 
                 val boundPrimary = runCatching {
                     provider.bindToLifecycle(owner, primarySelector, preview, analysis)
@@ -2028,6 +2107,11 @@ private fun PvpSafeCameraPreview(
                     if (boundFallback) {
                         isUsingFront = !preferFrontCamera
                         latestOnFacing(isUsingFront)
+                    } else {
+                        runCatching {
+                            provider.bindToLifecycle(owner, anyCameraSelector, preview, analysis)
+                            latestOnFacing(false)
+                        }
                     }
                 }
             }
