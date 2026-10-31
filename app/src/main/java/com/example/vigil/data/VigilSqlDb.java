@@ -2781,12 +2781,36 @@ public class VigilSqlDb extends SQLiteOpenHelper {
             int p2Reps,
             int p2Score
     ) {
+        return recordPvpMatch(player1Id, player1Name, player2Name, exercise, durationSec, p1Reps, p1Score, p2Reps, p2Score, "");
+    }
+
+    public PvpMatchRecord recordPvpMatch(
+            int player1Id,
+            String player1Name,
+            String player2Name,
+            String exercise,
+            int durationSec,
+            int p1Reps,
+            int p1Score,
+            int p2Reps,
+            int p2Score,
+            String forfeitedBy
+    ) {
         SQLiteDatabase db = getWritableDatabase();
         String winnerName;
         int goldReward;
         int xpReward;
 
-        if (p1Score > p2Score) {
+        String cleanForfeit = forfeitedBy != null ? forfeitedBy.trim() : "";
+        if (!cleanForfeit.isEmpty() && cleanForfeit.equalsIgnoreCase(player1Name)) {
+            winnerName = player2Name;
+            goldReward = 10 + p1Reps;
+            xpReward = 20 + p1Reps;
+        } else if (!cleanForfeit.isEmpty()) {
+            winnerName = player1Name;
+            goldReward = 45 + (p1Reps * 2);
+            xpReward = 90 + (p1Reps * 3);
+        } else if (p1Score > p2Score) {
             winnerName = player1Name;
             goldReward = 45 + (p1Reps * 2);
             xpReward = 90 + (p1Reps * 3);

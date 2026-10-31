@@ -17,7 +17,7 @@ data class PvpOpponent(
     val isRealUser: Boolean = true
 )
 
-data class PvpRoomSyncState(
+data class PvpRoomSyncState @JvmOverloads constructor(
     val matched: Boolean,
     val roomId: String = "",
     val opponentName: String = "",
@@ -31,7 +31,9 @@ data class PvpRoomSyncState(
     val opponentFrameBase64: String? = null,
     val roomExercise: String = "",
     val roomDurationSec: Int = 0,
-    val serverOnline: Boolean = false
+    val serverOnline: Boolean = false,
+    val forfeitedBy: String = "",
+    val waitingHint: String = ""
 )
 
 data class PvpMatchRecord(

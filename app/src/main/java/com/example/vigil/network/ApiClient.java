@@ -67,6 +67,7 @@ public class ApiClient {
     private static int cachedOppAngle = 165;
     private static String cachedOppHint = "Đang giữ nhịp tập";
     private static String cachedOppFrame = null;
+    private static String cachedForfeitedBy = "";
 
     private static OkHttpClient buildTrustAllClient(int connectMs, int readMs) {
         try {
@@ -863,6 +864,7 @@ public class ApiClient {
             cachedOppAngle = 165;
             cachedOppHint = "Đang giữ nhịp tập";
             cachedOppFrame = null;
+            cachedForfeitedBy = "";
         }
 
         // 1. Thử ghép trận qua Server Vigil (Emulator 10.0.2.2, LAN Wi-Fi 192.168.1.152 và Public HTTPS Tunnel)
@@ -886,9 +888,14 @@ public class ApiClient {
             return cloudState;
         }
 
+        String waitingHint = !localState.getWaitingHint().isEmpty()
+                ? localState.getWaitingHint()
+                : cloudState.getWaitingHint();
         return new PvpRoomSyncState(
                 false, "", "", "🧑‍🎤", 1, 50, 0, 0, 165, "", null, "", 0,
-                localOnline || cloudState.getServerOnline()
+                localOnline || cloudState.getServerOnline(),
+                "",
+                waitingHint
         );
     }
 
@@ -1025,6 +1032,10 @@ public class ApiClient {
                     }
                 }
 
+                String reqEx = exercise != null ? exercise : "PUSHUP";
+                int reqDur = durationSec > 0 ? durationSec : 30;
+                String otherModeHint = "";
+
                 for (Map.Entry<String, JsonObject> entry : activeSeekers.entrySet()) {
                     String otherDevId = entry.getKey();
                     JsonObject opp = entry.getValue();
@@ -1032,6 +1043,21 @@ public class ApiClient {
                     String oppSeekToken = opp.has("seekToken") && !opp.get("seekToken").isJsonNull()
                             ? opp.get("seekToken").getAsString() : otherDevId;
                     if (consumedSeekTokens.contains(oppSeekToken)) continue;
+
+                    String oppName = opp.has("username") && !opp.get("username").isJsonNull()
+                            ? opp.get("username").getAsString() : "Đối Thủ Online";
+                    String oppEx = opp.has("exercise") && !opp.get("exercise").isJsonNull()
+                            ? opp.get("exercise").getAsString() : "PUSHUP";
+                    int oppDur = opp.has("durationSec") && !opp.get("durationSec").isJsonNull()
+                            ? opp.get("durationSec").getAsInt() : 30;
+
+                    // Chỉ ghép trận khi cả 2 người chơi cùng chọn ĐÚNG BÀI TẬP và ĐÚNG THỜI GIAN
+                    if (!oppEx.equalsIgnoreCase(reqEx) || oppDur != reqDur) {
+                        if (otherModeHint.isEmpty()) {
+                            otherModeHint = oppName + " đang tìm trận ở chế độ: " + oppEx + " · " + oppDur + "s";
+                        }
+                        continue;
+                    }
 
                     consumedSeekTokens.add(oppSeekToken);
                     boolean firstIsMe = DEVICE_ID.compareTo(otherDevId) <= 0;
@@ -1043,21 +1069,12 @@ public class ApiClient {
                     if (s2.length() > 4) s2 = s2.substring(0, 4);
 
                     String deterministicRoomId = "vigil_room_" + d1 + "_" + d2 + "_" + s1 + s2;
-                    String oppName = opp.has("username") && !opp.get("username").isJsonNull()
-                            ? opp.get("username").getAsString() : "Đối Thủ Online";
                     String oppAvt = opp.has("avatar") && !opp.get("avatar").isJsonNull()
                             ? opp.get("avatar").getAsString() : "🧑‍🎤";
                     int oppLvl = opp.has("level") && !opp.get("level").isJsonNull()
                             ? opp.get("level").getAsInt() : 1;
                     int oppDmg = opp.has("attackDamage") && !opp.get("attackDamage").isJsonNull()
                             ? opp.get("attackDamage").getAsInt() : 50;
-                    String oppEx = opp.has("exercise") && !opp.get("exercise").isJsonNull()
-                            ? opp.get("exercise").getAsString() : exercise;
-                    int oppDur = opp.has("durationSec") && !opp.get("durationSec").isJsonNull()
-                            ? opp.get("durationSec").getAsInt() : durationSec;
-
-                    String roomEx = firstIsMe ? exercise : oppEx;
-                    int roomDur = firstIsMe ? durationSec : oppDur;
 
                     return new PvpRoomSyncState(
                             true,
@@ -1071,13 +1088,13 @@ public class ApiClient {
                             165,
                             "Đang vào tư thế",
                             null,
-                            roomEx,
-                            roomDur,
+                            reqEx,
+                            reqDur,
                             true
                     );
                 }
 
-                return new PvpRoomSyncState(false, "", "", "🧑‍🎤", 1, 50, 0, 0, 165, "", null, "", 0, true);
+                return new PvpRoomSyncState(false, "", "", "🧑‍🎤", 1, 50, 0, 0, 165, "", null, "", 0, true, "", otherModeHint);
             }
         } catch (Exception e) {
             return new PvpRoomSyncState(false, "", "", "🧑‍🎤", 1, 50, 0, 0, 165, "", null, "", 0, false);
@@ -1131,6 +1148,40 @@ public class ApiClient {
     public static void cancelPvpQueue(String username) {
         cancelLocalPvpQueue(username);
         cancelCloudPvpQueue(username);
+    }
+
+    public static void forfeitPvpRoom(String roomId, String username, int reps, int score) {
+        if (roomId == null || roomId.isEmpty()) return;
+        try {
+            OkHttpClient http = baseUrl.startsWith("https://") ? client : fastLocalClient;
+            JsonObject body = new JsonObject();
+            body.addProperty("roomId", roomId);
+            body.addProperty("deviceId", DEVICE_ID);
+            body.addProperty("username", username);
+            body.addProperty("reps", reps);
+            body.addProperty("score", score);
+            Request req = new Request.Builder()
+                    .url(baseUrl + "/api/pvp/room/forfeit")
+                    .post(RequestBody.create(jsonMediaType, body.toString()))
+                    .build();
+            try (Response ignored = http.newCall(req).execute()) {}
+        } catch (Exception ignored) {}
+
+        if (roomId.startsWith("vigil_room_")) {
+            try {
+                JsonObject scorePayload = new JsonObject();
+                scorePayload.addProperty("d", DEVICE_ID);
+                scorePayload.addProperty("u", username);
+                scorePayload.addProperty("r", reps);
+                scorePayload.addProperty("s", score);
+                scorePayload.addProperty("q", username);
+                Request scoreReq = new Request.Builder()
+                        .url("https://ntfy.sh/" + roomId + "_s")
+                        .post(RequestBody.create(jsonMediaType, scorePayload.toString()))
+                        .build();
+                try (Response ignored = client.newCall(scoreReq).execute()) {}
+            } catch (Exception ignored) {}
+        }
     }
 
     private static PvpRoomSyncState tryLocalSyncPvpRoom(
@@ -1189,6 +1240,7 @@ public class ApiClient {
             cachedOppAngle = 165;
             cachedOppHint = "Đang giữ nhịp tập";
             cachedOppFrame = null;
+            cachedForfeitedBy = "";
         }
 
         // 1. Luôn thử đồng bộ qua Server tốc độ cao trước (hỗ trợ cả room_ lẫn vigil_room_)
@@ -1197,6 +1249,7 @@ public class ApiClient {
         if (localSync.getMatched()) {
             if (localSync.getOpponentReps() > cachedOppReps) cachedOppReps = localSync.getOpponentReps();
             if (localSync.getOpponentScore() > cachedOppScore) cachedOppScore = localSync.getOpponentScore();
+            if (!localSync.getForfeitedBy().isEmpty()) cachedForfeitedBy = localSync.getForfeitedBy();
             if (localSync.getOpponentFrameBase64() != null && !localSync.getOpponentFrameBase64().isEmpty()) {
                 cachedOppFrame = localSync.getOpponentFrameBase64();
                 cachedOppAngle = localSync.getOpponentAngle();
@@ -1322,6 +1375,10 @@ public class ApiClient {
                             if (msg.has("s")) cachedOppScore = Math.max(cachedOppScore, msg.get("s").getAsInt());
                             if (msg.has("a")) cachedOppAngle = msg.get("a").getAsInt();
                             if (msg.has("h") && !msg.get("h").isJsonNull()) cachedOppHint = msg.get("h").getAsString();
+                            if (msg.has("q") && !msg.get("q").isJsonNull()) {
+                                String q = msg.get("q").getAsString();
+                                if (!q.isEmpty()) cachedForfeitedBy = q;
+                            }
                             if (!hasLocalHdFrame && msg.has("f") && !msg.get("f").isJsonNull()) {
                                 String f = msg.get("f").getAsString();
                                 if (!f.isEmpty()) cachedOppFrame = f;
@@ -1346,7 +1403,9 @@ public class ApiClient {
                 cachedOppFrame,
                 "",
                 0,
-                true
+                true,
+                cachedForfeitedBy,
+                ""
         );
     }
 
@@ -1374,15 +1433,19 @@ public class ApiClient {
         if (obj == null) {
             return new PvpRoomSyncState(false, "", "", "🧑‍🎤", 1, 50, 0, 0, 165, "", null, "", 0, false);
         }
+        String waitingHint = obj.has("waitingHint") && !obj.get("waitingHint").isJsonNull()
+                ? obj.get("waitingHint").getAsString() : "";
         if (!obj.has("matched") || !obj.get("matched").getAsBoolean()) {
-            return new PvpRoomSyncState(false, "", "", "🧑‍🎤", 1, 50, 0, 0, 165, "", null, "", 0, true);
+            return new PvpRoomSyncState(false, "", "", "🧑‍🎤", 1, 50, 0, 0, 165, "", null, "", 0, true, "", waitingHint);
         }
         String roomId = obj.has("roomId") && !obj.get("roomId").isJsonNull() ? obj.get("roomId").getAsString() : "";
         String roomEx = obj.has("exercise") && !obj.get("exercise").isJsonNull() ? obj.get("exercise").getAsString() : "";
         int roomDur = obj.has("durationSec") && !obj.get("durationSec").isJsonNull() ? obj.get("durationSec").getAsInt() : 0;
+        String forfeitedBy = obj.has("forfeitedBy") && !obj.get("forfeitedBy").isJsonNull()
+                ? obj.get("forfeitedBy").getAsString() : "";
         JsonObject opp = obj.has("opponent") && obj.get("opponent").isJsonObject() ? obj.getAsJsonObject("opponent") : null;
         if (opp == null) {
-            return new PvpRoomSyncState(true, roomId, "Đối Thủ", "🧑‍🎤", 1, 50, 0, 0, 165, "Đang tập", null, roomEx, roomDur, true);
+            return new PvpRoomSyncState(true, roomId, "Đối Thủ", "🧑‍🎤", 1, 50, 0, 0, 165, "Đang tập", null, roomEx, roomDur, true, forfeitedBy, "");
         }
         String uName = opp.has("username") && !opp.get("username").isJsonNull() ? opp.get("username").getAsString() : "Đối Thủ";
         String avt = opp.has("avatar") && !opp.get("avatar").isJsonNull() ? opp.get("avatar").getAsString() : "🧑‍🎤";
@@ -1393,7 +1456,7 @@ public class ApiClient {
         int angle = opp.has("angle") && !opp.get("angle").isJsonNull() ? opp.get("angle").getAsInt() : 165;
         String hint = opp.has("hint") && !opp.get("hint").isJsonNull() ? opp.get("hint").getAsString() : "Đang giữ nhịp tập";
         String frame = opp.has("frameBase64") && !opp.get("frameBase64").isJsonNull() ? opp.get("frameBase64").getAsString() : null;
-        return new PvpRoomSyncState(true, roomId, uName, avt, lvl, dmg, reps, score, angle, hint, frame, roomEx, roomDur, true);
+        return new PvpRoomSyncState(true, roomId, uName, avt, lvl, dmg, reps, score, angle, hint, frame, roomEx, roomDur, true, forfeitedBy, "");
     }
 
     public static boolean saveAdminItem(Item item) {

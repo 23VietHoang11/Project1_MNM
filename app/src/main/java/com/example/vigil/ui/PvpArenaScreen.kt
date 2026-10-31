@@ -110,6 +110,7 @@ fun PvpArenaScreen(
     var p2Angle by remember { mutableIntStateOf(165) }
     var p2Hint by remember { mutableStateOf("Đang vào tư thế") }
     var p2FrameBase64 by remember { mutableStateOf<String?>(null) }
+    var forfeitedByPlayer by remember { mutableStateOf("") }
 
     var matchRecord by remember { mutableStateOf<PvpMatchRecord?>(null) }
 
@@ -143,6 +144,7 @@ fun PvpArenaScreen(
         p2Angle = 165
         p2Hint = "Đang tập ${selectedExercise.label}"
         p2FrameBase64 = null
+        forfeitedByPlayer = ""
         matchRecord = null
         stage = PvpStage.VIDEO_CALL_BATTLE
     }
@@ -158,6 +160,7 @@ fun PvpArenaScreen(
                 onStartMatchmaking = {
                     activeRoomId = ""
                     matchedOpponent = null
+                    forfeitedByPlayer = ""
                     stage = PvpStage.MATCHMAKING
                 },
                 onClose = onClose
@@ -169,6 +172,10 @@ fun PvpArenaScreen(
                 vm = vm,
                 selectedExercise = selectedExercise,
                 selectedDurationSec = selectedDurationSec,
+                onSwitchModeToMatch = { newEx, newDur ->
+                    selectedExercise = newEx
+                    selectedDurationSec = newDur
+                },
                 onMatched = { opp, roomId, roomEx, roomDur ->
                     startMatchedBattle(opp, roomId, roomEx, roomDur)
                 },
@@ -211,6 +218,7 @@ fun PvpArenaScreen(
                     if (!rFrame.isNullOrBlank()) p2FrameBase64 = rFrame
                 },
                 onFinishCall = {
+                    forfeitedByPlayer = ""
                     val rec = vm.finishPvpMatch(
                         player2Name = opp.username,
                         exercise = selectedExercise,
@@ -218,16 +226,27 @@ fun PvpArenaScreen(
                         p1Reps = p1Reps,
                         p1Score = p1Score,
                         p2Reps = p2Reps,
-                        p2Score = p2Score
+                        p2Score = p2Score,
+                        forfeitedBy = ""
                     )
                     matchRecord = rec
                     stage = PvpStage.RESULT
                 },
-                onCancelCall = {
-                    scope.launch(Dispatchers.IO) {
-                        ApiClient.cancelPvpQueue(vm.name)
-                    }
-                    stage = PvpStage.LOBBY
+                onForfeitMatch = { whoForfeited ->
+                    val actualForfeiter = whoForfeited.ifBlank { vm.name }
+                    forfeitedByPlayer = actualForfeiter
+                    val rec = vm.finishPvpMatch(
+                        player2Name = opp.username,
+                        exercise = selectedExercise,
+                        durationSec = selectedDurationSec,
+                        p1Reps = p1Reps,
+                        p1Score = p1Score,
+                        p2Reps = p2Reps,
+                        p2Score = p2Score,
+                        forfeitedBy = actualForfeiter
+                    )
+                    matchRecord = rec
+                    stage = PvpStage.RESULT
                 }
             )
         }
@@ -245,10 +264,12 @@ fun PvpArenaScreen(
                 p1Score = p1Score,
                 p2Reps = p2Reps,
                 p2Score = p2Score,
+                forfeitedBy = forfeitedByPlayer,
                 record = matchRecord,
                 onRematchQueue = {
                     activeRoomId = ""
                     matchedOpponent = null
+                    forfeitedByPlayer = ""
                     stage = PvpStage.MATCHMAKING
                 },
                 onBackToLobby = {
@@ -621,11 +642,13 @@ private fun PvpMatchmakingWaitingView(
     vm: GameViewModel,
     selectedExercise: Exercise,
     selectedDurationSec: Int,
+    onSwitchModeToMatch: (Exercise, Int) -> Unit,
     onMatched: (PvpOpponent, String, String, Int) -> Unit,
     onCancelQueue: () -> Unit
 ) {
     var elapsedSec by remember { mutableIntStateOf(0) }
     var serverConnected by remember { mutableStateOf(true) }
+    var otherWaitingHint by remember { mutableStateOf("") }
 
     val infiniteTransition = rememberInfiniteTransition(label = "radar")
     val pulseScale by infiniteTransition.animateFloat(
@@ -638,9 +661,9 @@ private fun PvpMatchmakingWaitingView(
         label = "pulse"
     )
 
-    // Liên tục phát tín hiệu (Heartbeat) lên hàng đợi trực tuyến mỗi 1 giây.
-    // Chỉ ghép cặp khi có 1 tài khoản người chơi khác ĐANG ONLINE cũng bấm Ghép Trận cùng lúc!
-    LaunchedEffect(Unit) {
+    // Liên tục phát tín hiệu (Heartbeat) lên hàng đợi trực tuyến mỗi 900ms.
+    // Chỉ ghép cặp khi có 1 tài khoản người chơi khác ĐANG ONLINE chọn CÙNG BÀI TẬP & CÙNG THỜI GIAN!
+    LaunchedEffect(selectedExercise, selectedDurationSec) {
         var isFirstRequest = true
         while (true) {
             val res = withContext(Dispatchers.IO) {
@@ -656,6 +679,7 @@ private fun PvpMatchmakingWaitingView(
             }
             isFirstRequest = false
             serverConnected = res.serverOnline
+            otherWaitingHint = res.waitingHint
 
             if (res.matched && res.opponentName.isNotBlank()) {
                 onMatched(
@@ -674,7 +698,7 @@ private fun PvpMatchmakingWaitingView(
                 break
             }
 
-            delay(1000L)
+            delay(900L)
             elapsedSec += 1
         }
     }
@@ -719,7 +743,7 @@ private fun PvpMatchmakingWaitingView(
 
         // Radar Animation + Avatar người chơi đang tìm trận
         Box(
-            Modifier.size(250.dp),
+            Modifier.size(230.dp),
             contentAlignment = Alignment.Center
         ) {
             Canvas(Modifier.fillMaxSize()) {
@@ -739,24 +763,24 @@ private fun PvpMatchmakingWaitingView(
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Box(
                     Modifier
-                        .size(92.dp)
+                        .size(88.dp)
                         .clip(CircleShape)
                         .background(Color(0xFF1E293B))
                         .border(3.dp, C.Blue, CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(vm.avatar, fontSize = 46.sp)
+                    Text(vm.avatar, fontSize = 44.sp)
                 }
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(10.dp))
                 Text(
                     "⏱️ $timeFormatted",
                     color = C.Yellow,
                     fontWeight = FontWeight.Black,
-                    fontSize = 24.sp
+                    fontSize = 23.sp
                 )
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    if (serverConnected) "🟢 Đang tìm tài khoản Online khác cùng bấm Ghép Trận..."
+                    if (serverConnected) "🟢 Đang tìm đối thủ chọn cùng ${selectedExercise.label} · ${selectedDurationSec}s..."
                     else "🔄 Đang kết nối tới máy chủ Ghép Trận...",
                     color = if (serverConnected) C.Green else C.Orange,
                     fontSize = 12.sp,
@@ -767,11 +791,64 @@ private fun PvpMatchmakingWaitingView(
             }
         }
 
-        // Thông báo trạng thái ghép trận & Nút Hủy Tìm Trận (Không hiển thị danh sách acc Offline)
+        // Thông báo trạng thái ghép trận & gợi ý nếu có người chơi khác đang chờ ở bài tập/thời gian khác
         Column(
             Modifier.fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            if (otherWaitingHint.isNotBlank()) {
+                val suggestedEx = Exercise.entries.firstOrNull {
+                    otherWaitingHint.contains(it.name, ignoreCase = true)
+                }
+                val suggestedDur = listOf(15, 30, 60, 90).firstOrNull {
+                    otherWaitingHint.contains("${it}s")
+                }
+
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Color(0xFF3B1D38))
+                        .border(1.5.dp, C.Yellow, RoundedCornerShape(16.dp))
+                        .padding(12.dp)
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            "⚠️ PHÁT HIỆN NGƯỜI CHƠI KHÁC ĐANG CHỜ LỆCH CHẾ ĐỘ!",
+                            color = C.Yellow,
+                            fontWeight = FontWeight.Black,
+                            fontSize = 11.sp
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            otherWaitingHint,
+                            color = Color.White,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center
+                        )
+                        if (suggestedEx != null && suggestedDur != null) {
+                            Spacer(Modifier.height(8.dp))
+                            Box(
+                                Modifier
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(C.Orange)
+                                    .clickable { onSwitchModeToMatch(suggestedEx, suggestedDur) }
+                                    .padding(horizontal = 14.dp, vertical = 7.dp)
+                            ) {
+                                Text(
+                                    "⚡ Đổi sang ${suggestedEx.label} · ${suggestedDur}s để ghép ngay",
+                                    color = Color.White,
+                                    fontWeight = FontWeight.Black,
+                                    fontSize = 11.sp
+                                )
+                            }
+                        }
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+            }
+
             VCard {
                 Row(
                     Modifier.fillMaxWidth(),
@@ -790,14 +867,14 @@ private fun PvpMatchmakingWaitingView(
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
                         Text(
-                            "GHÉP TRẬN NGƯỜI CHƠI ONLINE THẬT 100%",
+                            "ĐỒNG BỘ CÙNG BÀI TẬP & CÙNG THỜI GIAN 100%",
                             color = C.Yellow,
                             fontWeight = FontWeight.Black,
                             fontSize = 11.sp
                         )
                         Spacer(Modifier.height(2.dp))
                         Text(
-                            "Hệ thống chỉ vào trận khi có tài khoản thứ 2 đang trực tuyến và cùng bấm 'Tìm Đối Thủ Ghép Trận'.",
+                            "Hệ thống chỉ ghép trận khi cả 2 tài khoản cùng chọn ${selectedExercise.label} và thời gian ${selectedDurationSec} giây.",
                             color = C.Muted,
                             fontSize = 11.sp,
                             lineHeight = 16.sp
@@ -854,9 +931,10 @@ private fun PvpMessengerVideoBattleView(
     onP1RepFromAiCamera: () -> Unit,
     onRemoteOpponentSync: (Int, Int, Int, String, String?) -> Unit,
     onFinishCall: () -> Unit,
-    onCancelCall: () -> Unit
+    onForfeitMatch: (String) -> Unit
 ) {
     val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
     var cameraGranted by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(ctx, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
@@ -872,31 +950,58 @@ private fun PvpMessengerVideoBattleView(
     }
 
     var remainingSec by remember(durationSec) { mutableIntStateOf(durationSec) }
-    var useFrontCamera by remember { mutableStateOf(true) } // Mặc định Camera Trước chuẩn Video Call (tự động fallback nếu máy không có)
-    var swapPipView by remember { mutableStateOf(false) }   // false = Đối phương ở màn hình lớn, Bản thân ở góc PiP (chuẩn Messenger)
+    var useFrontCamera by remember { mutableStateOf(true) }
+    var actuallyMirrored by remember { mutableStateOf(true) }
+    var swapPipView by remember { mutableStateOf(false) }
+    var matchEnded by remember { mutableStateOf(false) }
 
     val counter = remember(exercise) { RepCounter(exercise) }
     var myPoseFrame by remember { mutableStateOf<PvpPoseFrame?>(null) }
+    var mySelfBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var myLatestFrameBase64 by remember { mutableStateOf<String?>(null) }
+    var myFrameSeq by remember { mutableIntStateOf(0) }
     var scorePopup by remember { mutableStateOf<String?>(null) }
 
-    // Luôn lấy giá trị Điểm & Rep mới nhất trong các vòng lặp Coroutine (tránh lỗi closure giữ giá trị 0 ban đầu)
+    // Luôn lấy giá trị Điểm & Rep mới nhất trong các vòng lặp Coroutine
     val latestP1Reps by rememberUpdatedState(p1Reps)
     val latestP1Score by rememberUpdatedState(p1Score)
     val latestOnP1Rep by rememberUpdatedState(onP1RepFromAiCamera)
     val latestOnRemoteSync by rememberUpdatedState(onRemoteOpponentSync)
     val latestOnFinishCall by rememberUpdatedState(onFinishCall)
+    val latestOnForfeitMatch by rememberUpdatedState(onForfeitMatch)
+
+    fun triggerSelfForfeit() {
+        if (matchEnded) return
+        matchEnded = true
+        val finalReps = latestP1Reps
+        val finalScore = latestP1Score
+        scope.launch(Dispatchers.IO) {
+            ApiClient.forfeitPvpRoom(roomId, p1Name, finalReps, finalScore)
+        }
+        latestOnForfeitMatch(p1Name)
+    }
+
+    // Watchdog tự động đổi sang Camera còn lại nếu sau 2.2 giây chưa nhận được khung hình nào (khắc phục triệt để lỗi đen cam)
+    LaunchedEffect(cameraGranted) {
+        if (!cameraGranted) return@LaunchedEffect
+        delay(2200L)
+        if (mySelfBitmap == null && myPoseFrame == null) {
+            useFrontCamera = !useFrontCamera
+        }
+    }
 
     // Nhận diện rep hoàn toàn tự động từ Camera AI Pose của bản thân
     LaunchedEffect(counter) {
         counter.onRepCompleted = {
-            latestOnP1Rep()
-            scorePopup = "⚡ $p1Name +1 REP!"
+            if (!matchEnded) {
+                latestOnP1Rep()
+                scorePopup = "⚡ $p1Name +1 REP!"
+            }
         }
     }
 
     LaunchedEffect(counter.holdSeconds) {
-        if (exercise == Exercise.PLANK && counter.holdSeconds > 0 && counter.holdSeconds % 2 == 0) {
+        if (!matchEnded && exercise == Exercise.PLANK && counter.holdSeconds > 0 && counter.holdSeconds % 2 == 0) {
             latestOnP1Rep()
             scorePopup = "⚡ $p1Name +2s PLANK!"
         }
@@ -910,8 +1015,10 @@ private fun PvpMessengerVideoBattleView(
     }
 
     // Đồng hồ đếm ngược thời gian trận đấu + Đồng bộ chốt điểm cuối trận trước khi tổng kết Thắng/Thua
-    LaunchedEffect(remainingSec) {
+    LaunchedEffect(remainingSec, matchEnded) {
+        if (matchEnded) return@LaunchedEffect
         if (remainingSec <= 0) {
+            matchEnded = true
             if (roomId.isNotBlank()) {
                 repeat(2) {
                     val finalSync = withContext(Dispatchers.IO) {
@@ -922,7 +1029,7 @@ private fun PvpMessengerVideoBattleView(
                             latestP1Score,
                             counter.angleNow,
                             counter.hint,
-                            myLatestFrameBase64
+                            null
                         )
                     }
                     if (finalSync.matched) {
@@ -933,21 +1040,36 @@ private fun PvpMessengerVideoBattleView(
                             finalSync.opponentHint,
                             finalSync.opponentFrameBase64
                         )
+                        if (finalSync.forfeitedBy.isNotBlank()) {
+                            latestOnForfeitMatch(finalSync.forfeitedBy)
+                            return@LaunchedEffect
+                        }
                     }
-                    delay(220L)
+                    delay(180L)
                 }
             }
             latestOnFinishCall()
             return@LaunchedEffect
         }
         delay(1000L)
-        remainingSec -= 1
+        if (!matchEnded) {
+            remainingSec -= 1
+        }
     }
 
-    // Đồng bộ khung hình Video Call HD + Điểm số + Góc khớp thời gian thực (mỗi 250ms ~ 4 FPS) giữa 2 tài khoản Online
+    // Đồng bộ khung hình Video Call tốc độ cao (~9-10 FPS) + Điểm số + Kiểm tra Hủy trận tức thì
     LaunchedEffect(roomId) {
         if (roomId.isBlank()) return@LaunchedEffect
-        while (remainingSec > 0) {
+        var lastUploadedSeq = -1
+        while (!matchEnded && remainingSec > 0) {
+            val currentSeq = myFrameSeq
+            val frameToUpload = if (currentSeq != lastUploadedSeq) {
+                lastUploadedSeq = currentSeq
+                myLatestFrameBase64
+            } else {
+                null
+            }
+
             val syncState = withContext(Dispatchers.IO) {
                 ApiClient.syncPvpRoom(
                     roomId,
@@ -956,7 +1078,7 @@ private fun PvpMessengerVideoBattleView(
                     latestP1Score,
                     counter.angleNow,
                     counter.hint,
-                    myLatestFrameBase64
+                    frameToUpload
                 )
             }
             if (syncState.matched) {
@@ -967,8 +1089,13 @@ private fun PvpMessengerVideoBattleView(
                     syncState.opponentHint,
                     syncState.opponentFrameBase64
                 )
+                if (syncState.forfeitedBy.isNotBlank() && !matchEnded) {
+                    matchEnded = true
+                    latestOnForfeitMatch(syncState.forfeitedBy)
+                    break
+                }
             }
-            delay(250L)
+            delay(85L)
         }
     }
 
@@ -976,6 +1103,26 @@ private fun PvpMessengerVideoBattleView(
     val p1Ratio = if (totalScore == 0) 0.5f else (p1Score.toFloat() / totalScore.toFloat()).coerceIn(0.12f, 0.88f)
 
     Box(Modifier.fillMaxSize().background(Color(0xFF080711))) {
+        // =========================================================================
+        // 0. ENGINE CAMERAX CHẠY NGẦM LIÊN TỤC (ĐẢM BẢO CAM BẢN THÂN LUÔN HIỆN 100% & KHÔNG BỊ ĐEN KHI ĐỔI KHUNG PIP)
+        // =========================================================================
+        if (cameraGranted) {
+            PvpSafeCameraPreview(
+                preferFrontCamera = useFrontCamera,
+                onCameraFacingBound = { isFront -> actuallyMirrored = isFront },
+                onPose = { pose, w, h ->
+                    counter.update(pose)
+                    myPoseFrame = PvpPoseFrame(pose, w, h)
+                },
+                onSelfFrameReady = { bmp, b64 ->
+                    mySelfBitmap = bmp
+                    myLatestFrameBase64 = b64
+                    myFrameSeq += 1
+                },
+                modifier = Modifier.size(1.dp)
+            )
+        }
+
         // =========================================================================
         // A. KHUNG HÌNH VIDEO CHÍNH TOÀN MÀN HÌNH (MẶC ĐỊNH: HÌNH ẢNH CỦA ĐỐI PHƯƠNG)
         // =========================================================================
@@ -994,16 +1141,10 @@ private fun PvpMessengerVideoBattleView(
         } else {
             SelfLiveCameraFeed(
                 cameraGranted = cameraGranted,
-                useFrontCamera = useFrontCamera,
+                isMirrored = actuallyMirrored,
                 playerAvatar = p1Avatar,
+                selfBitmap = mySelfBitmap,
                 poseFrame = myPoseFrame,
-                onPoseDetected = { pose, w, h ->
-                    counter.update(pose)
-                    myPoseFrame = PvpPoseFrame(pose, w, h)
-                },
-                onFrameCaptured = { b64 ->
-                    myLatestFrameBase64 = b64
-                },
                 isFullScreen = true,
                 modifier = Modifier.fillMaxSize()
             )
@@ -1018,7 +1159,7 @@ private fun PvpMessengerVideoBattleView(
                 .statusBarsPadding()
                 .padding(horizontal = 14.dp, vertical = 10.dp)
         ) {
-            // Hàng 1: Rời phòng - Đồng hồ đếm ngược - Live Call
+            // Hàng 1: Rời phòng (Hủy trận & báo kết quả ngay) - Đồng hồ đếm ngược - Live Call
             Row(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -1029,7 +1170,7 @@ private fun PvpMessengerVideoBattleView(
                         .clip(RoundedCornerShape(20.dp))
                         .background(Color(0xB3141129))
                         .border(1.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(20.dp))
-                        .clickable { onCancelCall() }
+                        .clickable { triggerSelfForfeit() }
                         .padding(horizontal = 12.dp, vertical = 6.dp)
                 ) {
                     Text("← Rời phòng", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
@@ -1182,24 +1323,16 @@ private fun PvpMessengerVideoBattleView(
                 .clickable { swapPipView = !swapPipView }
         ) {
             if (!swapPipView) {
-                // Khung nhỏ hiển thị Camera thật đang quay của chính bản thân
                 SelfLiveCameraFeed(
                     cameraGranted = cameraGranted,
-                    useFrontCamera = useFrontCamera,
+                    isMirrored = actuallyMirrored,
                     playerAvatar = p1Avatar,
+                    selfBitmap = mySelfBitmap,
                     poseFrame = myPoseFrame,
-                    onPoseDetected = { pose, w, h ->
-                        counter.update(pose)
-                        myPoseFrame = PvpPoseFrame(pose, w, h)
-                    },
-                    onFrameCaptured = { b64 ->
-                        myLatestFrameBase64 = b64
-                    },
                     isFullScreen = false,
                     modifier = Modifier.fillMaxSize()
                 )
             } else {
-                // Nếu đã hoán đổi thì khung nhỏ hiển thị Đối phương
                 OpponentLiveVideoFeed(
                     opponentName = p2Name,
                     opponentAvatar = p2Avatar,
@@ -1257,7 +1390,6 @@ private fun PvpMessengerVideoBattleView(
 
         // =========================================================================
         // D. THANH ĐIỀU KHIỂN CUỘC GỌI PHÍA DƯỚI (MESSENGER CALL BOTTOM DOCK)
-        //    (GỌN GÀNG - CHỈ HIỂN THỊ TRẠNG THÁI AI POSE & NÚT ĐIỀU KHIỂN VIDEO CALL)
         // =========================================================================
         Column(
             Modifier
@@ -1284,7 +1416,7 @@ private fun PvpMessengerVideoBattleView(
                 ) {
                     Column(Modifier.weight(1f)) {
                         Text(
-                            "🤖 AI CAMERA TỰ ĐỘNG ĐẾM REP · ${exercise.label.uppercase()}",
+                            "🤖 AI CAMERA TỰ ĐỘNG ĐẾM REP · ${exercise.label.uppercase()} (${durationSec}S)",
                             color = C.Blue,
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Black
@@ -1334,12 +1466,12 @@ private fun PvpMessengerVideoBattleView(
                         onClick = { swapPipView = !swapPipView }
                     )
 
-                    // Nút Kết thúc trận / Cúp máy
+                    // Nút Hủy / Kết thúc trận đấu sớm -> Dừng trận trên cả 2 máy và thông báo kết quả
                     CallControlButton(
                         icon = "📞",
                         label = "Kết Thúc",
                         bgColor = Color(0xFFEF4444),
-                        onClick = onFinishCall
+                        onClick = { triggerSelfForfeit() }
                     )
                 }
             }
@@ -1388,16 +1520,21 @@ private fun OpponentLiveVideoFeed(
     isFullScreen: Boolean,
     modifier: Modifier = Modifier
 ) {
-    // Giải mã khung hình Camera trực tiếp từ máy của đối phương đang online
-    val remoteBitmap = remember(frameBase64) {
-        if (frameBase64.isNullOrBlank()) null
-        else runCatching {
-            val bytes = Base64.decode(frameBase64, Base64.DEFAULT)
-            BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-        }.getOrNull()
+    // Giải mã khung hình Camera trên luồng nền (Dispatchers.Default) để giao diện mượt 60 FPS không bị khựng
+    var remoteBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    LaunchedEffect(frameBase64) {
+        if (frameBase64.isNullOrBlank()) return@LaunchedEffect
+        val decoded = withContext(Dispatchers.Default) {
+            runCatching {
+                val bytes = Base64.decode(frameBase64, Base64.DEFAULT)
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+            }.getOrNull()
+        }
+        if (decoded != null) {
+            remoteBitmap = decoded
+        }
     }
 
-    // Tư thế xương phản ánh đúng góc khớp thực tế từ máy đối phương gửi sang (không tự động nhấp nhô giả)
     val dipRatio = ((165f - opponentAngle.toFloat()).coerceIn(0f, 90f)) / 90f
 
     Box(
@@ -1408,12 +1545,13 @@ private fun OpponentLiveVideoFeed(
                 )
             )
     ) {
-        if (remoteBitmap != null) {
+        val bmp = remoteBitmap
+        if (bmp != null) {
             Image(
-                bitmap = remoteBitmap.asImageBitmap(),
+                bitmap = bmp.asImageBitmap(),
                 contentDescription = "Opponent Live Camera Stream",
                 contentScale = ContentScale.Crop,
-                filterQuality = FilterQuality.High,
+                filterQuality = FilterQuality.Medium,
                 modifier = Modifier.fillMaxSize()
             )
         } else {
@@ -1494,7 +1632,7 @@ private fun OpponentLiveVideoFeed(
             }
         }
 
-        // Nhãn thông tin Camera của đối phương gọn gàng ở góc dưới bên trái (không che giữa màn hình Video)
+        // Nhãn thông tin Camera của đối phương gọn gàng ở góc dưới bên trái
         if (isFullScreen) {
             Row(
                 Modifier
@@ -1528,25 +1666,26 @@ private fun OpponentLiveVideoFeed(
 }
 
 // ============================================================================
-// KHUNG HÌNH CAMERA TRỰC TIẾP CỦA CHÍNH BẢN THÂN ĐANG QUAY (SELF CAMERA FEED)
+// KHUNG HÌNH CAMERA TRỰC TIẾP CỦA CHÍNH BẢN THÂN ĐANG QUAY (HIỂN THỊ BẰNG COMPOSE BITMAP TRỰC TIẾP -> KHÔNG BAO GIỜ BỊ ĐEN)
 // ============================================================================
 @Composable
 private fun SelfLiveCameraFeed(
     cameraGranted: Boolean,
-    useFrontCamera: Boolean,
+    isMirrored: Boolean,
     playerAvatar: String,
+    selfBitmap: Bitmap?,
     poseFrame: PvpPoseFrame?,
-    onPoseDetected: (Pose, Int, Int) -> Unit,
-    onFrameCaptured: (String) -> Unit,
     isFullScreen: Boolean,
     modifier: Modifier = Modifier
 ) {
     Box(modifier.background(Color(0xFF0F172A))) {
-        if (cameraGranted) {
-            PvpSafeCameraPreview(
-                preferFrontCamera = useFrontCamera,
-                onPose = onPoseDetected,
-                onFrameCaptured = onFrameCaptured
+        if (cameraGranted && selfBitmap != null) {
+            Image(
+                bitmap = selfBitmap.asImageBitmap(),
+                contentDescription = "Self Live Camera",
+                contentScale = ContentScale.Crop,
+                filterQuality = FilterQuality.Medium,
+                modifier = Modifier.fillMaxSize()
             )
             // Vẽ khung xương AI Pose lên trên Camera của bản thân
             Canvas(Modifier.fillMaxSize()) {
@@ -1556,7 +1695,7 @@ private fun SelfLiveCameraFeed(
                 val ox = (size.width - f.w * s) / 2
                 val oy = (size.height - f.h * s) / 2
                 fun pt(t: Int): Offset? = f.pose.getPoseLandmark(t)?.takeIf { it.inFrameLikelihood > 0.5f }?.let {
-                    val x = if (useFrontCamera) f.w - it.position.x else it.position.x
+                    val x = if (isMirrored) f.w - it.position.x else it.position.x
                     Offset(ox + x * s, oy + it.position.y * s)
                 }
                 val strokeW = if (isFullScreen) 8f else 4f
@@ -1581,7 +1720,7 @@ private fun SelfLiveCameraFeed(
                 Text(playerAvatar, fontSize = if (isFullScreen) 48.sp else 28.sp)
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "Camera của bạn",
+                    if (cameraGranted) "Đang mở Camera..." else "Camera của bạn",
                     color = C.Muted,
                     fontSize = 10.sp,
                     textAlign = TextAlign.Center
@@ -1592,7 +1731,7 @@ private fun SelfLiveCameraFeed(
 }
 
 // ============================================================================
-// 4. MÀN HÌNH KẾT QUẢ CHUNG CUỘC & TRAO THƯỞNG SOLO 1v1
+// 4. MÀN HÌNH KẾT QUẢ CHUNG CUỘC & TRAO THƯỞNG SOLO 1v1 (CÓ THÔNG BÁO HỦY TRẬN)
 // ============================================================================
 @Composable
 private fun PvpModernResultView(
@@ -1606,15 +1745,27 @@ private fun PvpModernResultView(
     p1Score: Int,
     p2Reps: Int,
     p2Score: Int,
+    forfeitedBy: String,
     record: PvpMatchRecord?,
     onRematchQueue: () -> Unit,
     onBackToLobby: () -> Unit,
     onExit: () -> Unit
 ) {
-    val isP1Win = p1Score > p2Score
-    val isDraw = p1Score == p2Score
+    val hasForfeit = forfeitedBy.isNotBlank()
+    val p1Forfeited = hasForfeit && forfeitedBy.equals(p1Name, ignoreCase = true)
+    val p2Forfeited = hasForfeit && !p1Forfeited
+
+    val isP1Win = when {
+        p1Forfeited -> false
+        p2Forfeited -> true
+        else -> p1Score > p2Score
+    }
+    val isDraw = !hasForfeit && (p1Score == p2Score)
+    val isP2Win = !isP1Win && !isDraw
 
     val bannerTitle = when {
+        p2Forfeited -> "🏆 CHIẾN THẮNG! ($p2Name ĐÃ HỦY TRẬN)"
+        p1Forfeited -> "🏳️ BẠN ĐÃ HỦY TRẬN · $p2Name THẮNG!"
         isDraw -> "🤝 KẾT QUẢ HÒA KỊCH TÍNH!"
         isP1Win -> "🏆 CHIẾN THẮNG ÁP ĐẢO!"
         else -> "💪 $p2Name CHIẾN THẮNG!"
@@ -1641,7 +1792,7 @@ private fun PvpModernResultView(
             bannerTitle,
             color = bannerColor,
             fontWeight = FontWeight.Black,
-            fontSize = 24.sp,
+            fontSize = 22.sp,
             textAlign = TextAlign.Center
         )
         Text(
@@ -1649,6 +1800,28 @@ private fun PvpModernResultView(
             color = C.Muted,
             fontSize = 13.sp
         )
+
+        if (hasForfeit) {
+            Spacer(Modifier.height(12.dp))
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Color(0xFF3B1A26))
+                    .border(1.dp, C.Pink, RoundedCornerShape(14.dp))
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    if (p2Forfeited) "⚠️ Đối thủ $forfeitedBy đã rời/hủy trận đấu giữa chừng. Trận đấu dừng ngay lập tức và phần thắng thuộc về bạn!"
+                    else "⚠️ Bạn đã rời/hủy trận đấu giữa chừng. Trận đấu đã dừng trên cả 2 thiết bị.",
+                    color = Color.White,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center
+                )
+            }
+        }
 
         Spacer(Modifier.height(20.dp))
 
@@ -1673,6 +1846,9 @@ private fun PvpModernResultView(
                 if (isP1Win) {
                     Text("👑 MVP", color = C.Yellow, fontWeight = FontWeight.Black, fontSize = 12.sp)
                     Spacer(Modifier.height(4.dp))
+                } else if (p1Forfeited) {
+                    Text("🏳️ ĐÃ HỦY", color = C.Pink, fontWeight = FontWeight.Black, fontSize = 11.sp)
+                    Spacer(Modifier.height(4.dp))
                 }
                 Text(p1Avatar, fontSize = 42.sp)
                 Spacer(Modifier.height(6.dp))
@@ -1685,7 +1861,6 @@ private fun PvpModernResultView(
             }
 
             // Thẻ Người chơi 2
-            val isP2Win = p2Score > p1Score
             Column(
                 Modifier
                     .weight(1f)
@@ -1701,6 +1876,9 @@ private fun PvpModernResultView(
             ) {
                 if (isP2Win) {
                     Text("👑 MVP", color = C.Yellow, fontWeight = FontWeight.Black, fontSize = 12.sp)
+                    Spacer(Modifier.height(4.dp))
+                } else if (p2Forfeited) {
+                    Text("🏳️ ĐÃ HỦY", color = C.Pink, fontWeight = FontWeight.Black, fontSize = 11.sp)
                     Spacer(Modifier.height(4.dp))
                 }
                 Text(p2Avatar, fontSize = 42.sp)
@@ -1751,13 +1929,15 @@ private fun PvpModernResultView(
 }
 
 // ============================================================================
-// CAMERAX PREVIEW AN TOÀN TUYỆT ĐỐI + TRÍCH XUẤT KHUNG HÌNH VIDEO CALL LIVE
+// CAMERAX ENGINE AN TOÀN TUYỆT ĐỐI + TRÍCH XUẤT BITMAP TRỰC TIẾP TRÊN LUỒNG NỀN (~8.5 FPS)
 // ============================================================================
 @Composable
 private fun PvpSafeCameraPreview(
     preferFrontCamera: Boolean,
+    onCameraFacingBound: (Boolean) -> Unit,
     onPose: (Pose, Int, Int) -> Unit,
-    onFrameCaptured: (String) -> Unit
+    onSelfFrameReady: (Bitmap, String) -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val ctx = LocalContext.current
     val owner = LocalLifecycleOwner.current
@@ -1769,41 +1949,10 @@ private fun PvpSafeCameraPreview(
         )
     }
     val executor = remember { Executors.newSingleThreadExecutor() }
-    val previewView = remember {
-        PreviewView(ctx).apply {
-            scaleType = PreviewView.ScaleType.FILL_CENTER
-            implementationMode = PreviewView.ImplementationMode.COMPATIBLE
-        }
-    }
+    val previewView = remember { PreviewView(ctx) }
+    val latestOnFacing by rememberUpdatedState(onCameraFacingBound)
     val latestOnPose by rememberUpdatedState(onPose)
-    val latestOnFrame by rememberUpdatedState(onFrameCaptured)
-
-    // Chụp khung hình độ nét cao (320x440) trực tiếp từ Camera PreviewView mỗi 250ms (~4 FPS) để truyền sang màn hình đối phương
-    LaunchedEffect(previewView) {
-        while (true) {
-            delay(250L)
-            val bmp = runCatching { previewView.bitmap }.getOrNull()
-            if (bmp != null) {
-                val encoded = withContext(Dispatchers.Default) {
-                    runCatching {
-                        val scaled = Bitmap.createScaledBitmap(bmp, 320, 440, true)
-                        val out = ByteArrayOutputStream()
-                        scaled.compress(Bitmap.CompressFormat.JPEG, 68, out)
-                        if (out.size() > 24000) {
-                            out.reset()
-                            scaled.compress(Bitmap.CompressFormat.JPEG, 52, out)
-                        }
-                        if (scaled != bmp) scaled.recycle()
-                        bmp.recycle()
-                        Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
-                    }.getOrNull()
-                }
-                if (!encoded.isNullOrBlank()) {
-                    latestOnFrame(encoded)
-                }
-            }
-        }
-    }
+    val latestOnSelfFrame by rememberUpdatedState(onSelfFrameReady)
 
     DisposableEffect(preferFrontCamera) {
         val future = ProcessCameraProvider.getInstance(ctx)
@@ -1816,7 +1965,36 @@ private fun PvpSafeCameraPreview(
                 val analysis = ImageAnalysis.Builder()
                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                     .build()
+
+                var isUsingFront = preferFrontCamera
+                var lastFrameTimeMs = 0L
+
                 analysis.setAnalyzer(executor) { proxy ->
+                    val now = System.currentTimeMillis()
+                    if (now - lastFrameTimeMs >= 115L) {
+                        lastFrameTimeMs = now
+                        runCatching {
+                            val rawBmp = proxy.toBitmap()
+                            val rot = proxy.imageInfo.rotationDegrees
+                            val matrix = android.graphics.Matrix().apply {
+                                if (rot != 0) postRotate(rot.toFloat())
+                                if (isUsingFront) postScale(-1f, 1f)
+                            }
+                            val rotated = Bitmap.createBitmap(rawBmp, 0, 0, rawBmp.width, rawBmp.height, matrix, true)
+                            val scaled = Bitmap.createScaledBitmap(rotated, 240, 320, true)
+                            val out = ByteArrayOutputStream()
+                            scaled.compress(Bitmap.CompressFormat.JPEG, 58, out)
+                            if (out.size() > 14000) {
+                                out.reset()
+                                scaled.compress(Bitmap.CompressFormat.JPEG, 46, out)
+                            }
+                            val b64 = Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
+                            if (rotated != rawBmp && rotated != scaled) rotated.recycle()
+                            if (rawBmp != scaled) rawBmp.recycle()
+                            latestOnSelfFrame(scaled, b64)
+                        }
+                    }
+
                     val media = proxy.image
                     if (media == null) {
                         proxy.close()
@@ -1828,20 +2006,29 @@ private fun PvpSafeCameraPreview(
                         .addOnSuccessListener { latestOnPose(it, w, h) }
                         .addOnCompleteListener { proxy.close() }
                 }
+
                 provider.unbindAll()
 
-                // Chọn Camera an toàn: Kiểm tra hasCamera trước khi bind để không bao giờ bị văng IllegalArgumentException
                 val primarySelector = if (preferFrontCamera) CameraSelector.DEFAULT_FRONT_CAMERA else CameraSelector.DEFAULT_BACK_CAMERA
                 val fallbackSelector = if (preferFrontCamera) CameraSelector.DEFAULT_BACK_CAMERA else CameraSelector.DEFAULT_FRONT_CAMERA
 
-                val chosenSelector = when {
-                    runCatching { provider.hasCamera(primarySelector) }.getOrDefault(false) -> primarySelector
-                    runCatching { provider.hasCamera(fallbackSelector) }.getOrDefault(false) -> fallbackSelector
-                    else -> null
-                }
+                val boundPrimary = runCatching {
+                    provider.bindToLifecycle(owner, primarySelector, preview, analysis)
+                    true
+                }.getOrDefault(false)
 
-                if (chosenSelector != null) {
-                    provider.bindToLifecycle(owner, chosenSelector, preview, analysis)
+                if (boundPrimary) {
+                    isUsingFront = preferFrontCamera
+                    latestOnFacing(isUsingFront)
+                } else {
+                    val boundFallback = runCatching {
+                        provider.bindToLifecycle(owner, fallbackSelector, preview, analysis)
+                        true
+                    }.getOrDefault(false)
+                    if (boundFallback) {
+                        isUsingFront = !preferFrontCamera
+                        latestOnFacing(isUsingFront)
+                    }
                 }
             }
         }, ContextCompat.getMainExecutor(ctx))
@@ -1858,5 +2045,5 @@ private fun PvpSafeCameraPreview(
         }
     }
 
-    AndroidView({ previewView }, Modifier.fillMaxSize())
+    AndroidView({ previewView }, modifier)
 }

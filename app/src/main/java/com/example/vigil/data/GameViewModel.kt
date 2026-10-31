@@ -1023,7 +1023,8 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
         p1Reps: Int,
         p1Score: Int,
         p2Reps: Int,
-        p2Score: Int
+        p2Score: Int,
+        forfeitedBy: String = ""
     ): PvpMatchRecord {
         val cleanP2 = player2Name.trim().ifEmpty { "Người Chơi 2" }
         val record = db.recordPvpMatch(
@@ -1035,7 +1036,8 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
             p1Reps,
             p1Score,
             p2Reps,
-            p2Score
+            p2Score,
+            forfeitedBy
         )
         loadDataFromSql()
 
