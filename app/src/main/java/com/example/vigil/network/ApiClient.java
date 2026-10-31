@@ -47,20 +47,21 @@ public class ApiClient {
             "http://192.168.1.152:3000",
             "http://127.0.0.1:3000"
     };
-    private static final String TUNNEL_CONFIG_URL = "https://ntfy.sh/vigil_active_server_url_v3";
-    private static final String CLOUD_LOBBY_URL = "https://ntfy.sh/vigil_pvp_global_lobby_v6";
+    private static final String TUNNEL_CONFIG_URL = "https://ntfy.sh/vigil_active_server_url_v4";
+    private static final String CLOUD_LOBBY_URL = "https://ntfy.sh/vigil_pvp_global_lobby_v7";
     public static final String DEVICE_ID = UUID.randomUUID().toString().replace("-", "").substring(0, 8);
 
     private static volatile String discoveredTunnelUrl = "";
     private static volatile long lastTunnelLookupMs = 0L;
     private static String currentSeekToken = UUID.randomUUID().toString().replace("-", "").substring(0, 8);
     private static final Set<String> consumedSeekTokens = Collections.synchronizedSet(new HashSet<>());
+    private static final Set<String> seenCloudRoomMsgIds = Collections.synchronizedSet(new HashSet<>());
     private static long lastCloudSeekPostMs = 0L;
     private static long lastCloudRoomPostMs = 0L;
+    private static int cloudVideoTopicIdx = 0;
     private static int lastPublishedReps = -1;
     private static int lastPublishedScore = -1;
     private static String activeSyncRoomId = "";
-    private static String lastRoomPollSince = "25s";
     private static int cachedOppReps = 0;
     private static int cachedOppScore = 0;
     private static int cachedOppAngle = 165;
@@ -856,7 +857,7 @@ public class ApiClient {
             currentSeekToken = UUID.randomUUID().toString().replace("-", "").substring(0, 8);
             lastCloudSeekPostMs = 0L;
             activeSyncRoomId = "";
-            lastRoomPollSince = "25s";
+            seenCloudRoomMsgIds.clear();
             cachedOppReps = 0;
             cachedOppScore = 0;
             cachedOppAngle = 165;
@@ -864,15 +865,31 @@ public class ApiClient {
             cachedOppFrame = null;
         }
 
-        // 1. Ưu tiên ghép trận qua Server Vigil (tự động dò Emulator 10.0.2.2, LAN Wi-Fi 192.168.1.152 và Public HTTPS Tunnel)
-        //    Nhờ Public HTTPS Tunnel, cả máy ảo lẫn điện thoại thật bật VPN/4G đều trỏ về đúng 1 Server duy nhất (Không giới hạn băng thông HD)
+        // 1. Thử ghép trận qua Server Vigil (Emulator 10.0.2.2, LAN Wi-Fi 192.168.1.152 và Public HTTPS Tunnel)
+        boolean localOnline = false;
         PvpRoomSyncState localState = tryLocalJoinPvpQueue(username, avatar, level, attackDamage, exercise, durationSec, resetQueue);
         if (localState.getServerOnline()) {
-            return localState;
+            localOnline = true;
+            if (localState.getMatched()) {
+                cancelCloudPvpQueue(username);
+                return localState;
+            }
         }
 
-        // 2. Fallback qua Cloud Relay nếu máy chủ Server Node.js đang tắt hoàn toàn
-        return tryCloudJoinPvpQueue(username, avatar, level, attackDamage, exercise, durationSec, resetQueue);
+        // 2. Luôn đồng thời phát/kiểm tra tín hiệu trên Cloud Relay toàn cầu khi chưa ghép được ở bước 1
+        //    Đảm bảo kể cả khi 1 máy kết nối LAN và 1 máy bật VPN (hoặc khác mạng hoàn toàn) vẫn luôn nhìn thấy nhau 100%!
+        PvpRoomSyncState cloudState = tryCloudJoinPvpQueue(username, avatar, level, attackDamage, exercise, durationSec, resetQueue);
+        if (cloudState.getMatched()) {
+            if (localOnline) {
+                cancelLocalPvpQueue(username);
+            }
+            return cloudState;
+        }
+
+        return new PvpRoomSyncState(
+                false, "", "", "🧑‍🎤", 1, 50, 0, 0, 165, "", null, "", 0,
+                localOnline || cloudState.getServerOnline()
+        );
     }
 
     private static PvpRoomSyncState tryLocalJoinPvpQueue(
@@ -1096,8 +1113,7 @@ public class ApiClient {
         } catch (Exception ignored) {}
     }
 
-    public static void cancelPvpQueue(String username) {
-        cancelLocalPvpQueue(username);
+    private static void cancelCloudPvpQueue(String username) {
         try {
             JsonObject cancelObj = new JsonObject();
             cancelObj.addProperty("type", "CANCEL");
@@ -1112,7 +1128,12 @@ public class ApiClient {
         } catch (Exception ignored) {}
     }
 
-    public static PvpRoomSyncState syncPvpRoom(
+    public static void cancelPvpQueue(String username) {
+        cancelLocalPvpQueue(username);
+        cancelCloudPvpQueue(username);
+    }
+
+    private static PvpRoomSyncState tryLocalSyncPvpRoom(
             String roomId,
             String username,
             int reps,
@@ -1121,9 +1142,6 @@ public class ApiClient {
             String hint,
             String frameBase64
     ) {
-        if (roomId != null && roomId.startsWith("vigil_room_")) {
-            return syncCloudPvpRoom(roomId, username, reps, score, angle, hint, frameBase64);
-        }
         try {
             OkHttpClient http = baseUrl.startsWith("https://") ? client : fastLocalClient;
             JsonObject body = new JsonObject();
@@ -1139,7 +1157,9 @@ public class ApiClient {
 
             Request req = new Request.Builder().url(baseUrl + "/api/pvp/room/sync").post(reqBody).build();
             try (Response res = http.newCall(req).execute()) {
-                if (!res.isSuccessful() || res.body() == null) return new PvpRoomSyncState(false, "", "", "🧑‍🎤", 1, 50, 0, 0, 165, "", null, "", 0, false);
+                if (!res.isSuccessful() || res.body() == null) {
+                    return new PvpRoomSyncState(false, "", "", "🧑‍🎤", 1, 50, 0, 0, 165, "", null, "", 0, false);
+                }
                 JsonObject obj = gson.fromJson(res.body().string(), JsonObject.class);
                 return parsePvpRoomSync(obj);
             }
@@ -1148,7 +1168,7 @@ public class ApiClient {
         }
     }
 
-    private static PvpRoomSyncState syncCloudPvpRoom(
+    public static PvpRoomSyncState syncPvpRoom(
             String roomId,
             String username,
             int reps,
@@ -1157,11 +1177,11 @@ public class ApiClient {
             String hint,
             String frameBase64
     ) {
-        String roomUrl = "https://ntfy.sh/" + roomId;
-        if (!roomId.equals(activeSyncRoomId)) {
+        if (roomId != null && !roomId.equals(activeSyncRoomId)) {
             activeSyncRoomId = roomId;
-            lastRoomPollSince = "25s";
+            seenCloudRoomMsgIds.clear();
             lastCloudRoomPostMs = 0L;
+            cloudVideoTopicIdx = 0;
             lastPublishedReps = -1;
             lastPublishedScore = -1;
             cachedOppReps = 0;
@@ -1171,42 +1191,105 @@ public class ApiClient {
             cachedOppFrame = null;
         }
 
+        // 1. Luôn thử đồng bộ qua Server tốc độ cao trước (hỗ trợ cả room_ lẫn vigil_room_)
+        PvpRoomSyncState localSync = tryLocalSyncPvpRoom(roomId, username, reps, score, angle, hint, frameBase64);
+        boolean hasLocalHdFrame = false;
+        if (localSync.getMatched()) {
+            if (localSync.getOpponentReps() > cachedOppReps) cachedOppReps = localSync.getOpponentReps();
+            if (localSync.getOpponentScore() > cachedOppScore) cachedOppScore = localSync.getOpponentScore();
+            if (localSync.getOpponentFrameBase64() != null && !localSync.getOpponentFrameBase64().isEmpty()) {
+                cachedOppFrame = localSync.getOpponentFrameBase64();
+                cachedOppAngle = localSync.getOpponentAngle();
+                cachedOppHint = localSync.getOpponentHint();
+                hasLocalHdFrame = true;
+            }
+            if (roomId != null && !roomId.startsWith("vigil_room_")) {
+                return localSync;
+            }
+        }
+
+        // 2. Đồng bộ đa luồng qua Cloud (Tách riêng kênh Điểm Số + 6 kênh Video xoay vòng để không bao giờ bị nghẽn băng thông)
+        return syncCloudPvpRoom(roomId, username, reps, score, angle, hint, frameBase64, hasLocalHdFrame);
+    }
+
+    private static PvpRoomSyncState syncCloudPvpRoom(
+            String roomId,
+            String username,
+            int reps,
+            int score,
+            int angle,
+            String hint,
+            String frameBase64,
+            boolean hasLocalHdFrame
+    ) {
+
         long nowMs = System.currentTimeMillis();
-        boolean scoreChanged = (reps != lastPublishedReps) || (score != lastPublishedScore);
-        if (scoreChanged || (nowMs - lastCloudRoomPostMs) >= 1600L) {
+        boolean scoreChanged = (reps > lastPublishedReps) || (score > lastPublishedScore);
+
+        // A. Kênh Điểm Số chuyên biệt (_s): Chỉ gửi khi tăng Rep/Điểm, cam kết 100% không bao giờ bị giới hạn tốc độ
+        if (scoreChanged) {
             try {
-                JsonObject syncPayload = new JsonObject();
-                syncPayload.addProperty("d", DEVICE_ID);
-                syncPayload.addProperty("u", username);
-                syncPayload.addProperty("r", reps);
-                syncPayload.addProperty("s", score);
-                syncPayload.addProperty("a", angle);
-                syncPayload.addProperty("h", hint != null ? hint : "");
-                if (!scoreChanged && frameBase64 != null && !frameBase64.isEmpty()) {
-                    String compactFrame = frameBase64.length() <= 3300
-                            ? frameBase64
-                            : shrinkFrameForCloudRelay(frameBase64);
-                    if (compactFrame != null && compactFrame.length() <= 3300) {
-                        syncPayload.addProperty("f", compactFrame);
-                    }
-                }
-                Request postReq = new Request.Builder()
-                        .url(roomUrl)
-                        .post(RequestBody.create(jsonMediaType, syncPayload.toString()))
+                JsonObject scorePayload = new JsonObject();
+                scorePayload.addProperty("d", DEVICE_ID);
+                scorePayload.addProperty("u", username);
+                scorePayload.addProperty("r", reps);
+                scorePayload.addProperty("s", score);
+                scorePayload.addProperty("a", angle);
+                scorePayload.addProperty("h", hint != null ? hint : "");
+                Request scoreReq = new Request.Builder()
+                        .url("https://ntfy.sh/" + roomId + "_s")
+                        .post(RequestBody.create(jsonMediaType, scorePayload.toString()))
                         .build();
-                try (Response postRes = client.newCall(postReq).execute()) {
-                    if (postRes.isSuccessful()) {
+                try (Response scoreRes = client.newCall(scoreReq).execute()) {
+                    if (scoreRes.isSuccessful()) {
                         lastPublishedReps = reps;
                         lastPublishedScore = score;
-                        lastCloudRoomPostMs = nowMs;
                     }
                 }
             } catch (Exception ignored) {}
         }
 
+        // B. 6 Kênh Video xoay vòng (_v0 .. _v5): Chia tải đều giúp truyền khung hình 220x300 sắc nét mượt mà
+        if (frameBase64 != null && !frameBase64.isEmpty() && (nowMs - lastCloudRoomPostMs) >= 650L) {
+            try {
+                String compactFrame = frameBase64.length() <= 3650
+                        ? frameBase64
+                        : shrinkFrameForCloudRelay(frameBase64);
+                if (compactFrame != null && compactFrame.length() <= 3750) {
+                    cloudVideoTopicIdx = (cloudVideoTopicIdx + 1) % 6;
+                    JsonObject vidPayload = new JsonObject();
+                    vidPayload.addProperty("d", DEVICE_ID);
+                    vidPayload.addProperty("u", username);
+                    vidPayload.addProperty("r", reps);
+                    vidPayload.addProperty("s", score);
+                    vidPayload.addProperty("a", angle);
+                    vidPayload.addProperty("h", hint != null ? hint : "");
+                    vidPayload.addProperty("f", compactFrame);
+
+                    Request vidReq = new Request.Builder()
+                            .url("https://ntfy.sh/" + roomId + "_v" + cloudVideoTopicIdx)
+                            .post(RequestBody.create(jsonMediaType, vidPayload.toString()))
+                            .build();
+                    try (Response vidRes = client.newCall(vidReq).execute()) {
+                        if (vidRes.isSuccessful()) {
+                            lastCloudRoomPostMs = nowMs;
+                        }
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+
+        // C. Đọc gộp cả kênh Điểm Số + 6 kênh Video chỉ bằng 1 HTTP GET duy nhất
+        String multiTopics = roomId + "_s,"
+                + roomId + "_v0,"
+                + roomId + "_v1,"
+                + roomId + "_v2,"
+                + roomId + "_v3,"
+                + roomId + "_v4,"
+                + roomId + "_v5";
         try {
             Request pollReq = new Request.Builder()
-                    .url(roomUrl + "/json?poll=1&since=" + lastRoomPollSince)
+                    .url("https://ntfy.sh/" + multiTopics + "/json?poll=1&since=15s")
                     .get()
                     .build();
             try (Response pollRes = client.newCall(pollReq).execute()) {
@@ -1220,20 +1303,26 @@ public class ApiClient {
                             if (env == null || !env.has("event") || !"message".equals(env.get("event").getAsString())) {
                                 continue;
                             }
-                            if (env.has("id") && !env.get("id").isJsonNull()) {
-                                lastRoomPollSince = env.get("id").getAsString();
+                            String msgId = env.has("id") && !env.get("id").isJsonNull()
+                                    ? env.get("id").getAsString() : "";
+                            if (!msgId.isEmpty() && seenCloudRoomMsgIds.contains(msgId)) {
+                                continue;
                             }
                             if (!env.has("message") || env.get("message").isJsonNull()) continue;
                             JsonObject msg = gson.fromJson(env.get("message").getAsString(), JsonObject.class);
                             if (msg == null || !msg.has("d")) continue;
                             String senderDev = msg.get("d").getAsString();
-                            if (senderDev.equals(DEVICE_ID)) continue;
+                            if (senderDev.equals(DEVICE_ID)) {
+                                if (!msgId.isEmpty()) seenCloudRoomMsgIds.add(msgId);
+                                continue;
+                            }
 
+                            if (!msgId.isEmpty()) seenCloudRoomMsgIds.add(msgId);
                             if (msg.has("r")) cachedOppReps = Math.max(cachedOppReps, msg.get("r").getAsInt());
                             if (msg.has("s")) cachedOppScore = Math.max(cachedOppScore, msg.get("s").getAsInt());
                             if (msg.has("a")) cachedOppAngle = msg.get("a").getAsInt();
                             if (msg.has("h") && !msg.get("h").isJsonNull()) cachedOppHint = msg.get("h").getAsString();
-                            if (msg.has("f") && !msg.get("f").isJsonNull()) {
+                            if (!hasLocalHdFrame && msg.has("f") && !msg.get("f").isJsonNull()) {
                                 String f = msg.get("f").getAsString();
                                 if (!f.isEmpty()) cachedOppFrame = f;
                             }
@@ -1266,12 +1355,12 @@ public class ApiClient {
             byte[] raw = android.util.Base64.decode(frameBase64, android.util.Base64.DEFAULT);
             android.graphics.Bitmap bmp = android.graphics.BitmapFactory.decodeByteArray(raw, 0, raw.length);
             if (bmp == null) return null;
-            android.graphics.Bitmap small = android.graphics.Bitmap.createScaledBitmap(bmp, 150, 206, true);
+            android.graphics.Bitmap small = android.graphics.Bitmap.createScaledBitmap(bmp, 220, 300, true);
             java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
-            small.compress(android.graphics.Bitmap.CompressFormat.JPEG, 36, out);
-            if (out.size() > 2350) {
+            small.compress(android.graphics.Bitmap.CompressFormat.JPEG, 46, out);
+            if (out.size() > 2720) {
                 out.reset();
-                small.compress(android.graphics.Bitmap.CompressFormat.JPEG, 24, out);
+                small.compress(android.graphics.Bitmap.CompressFormat.JPEG, 34, out);
             }
             if (small != bmp) small.recycle();
             bmp.recycle();

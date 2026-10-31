@@ -1984,16 +1984,55 @@ app.post('/api/pvp/queue/cancel', (req, res) => {
 // Đồng bộ điểm số, góc khớp và khung hình Video Call trong trận Solo 1v1
 app.post('/api/pvp/room/sync', (req, res) => {
     const { roomId, deviceId, username, reps, score, angle, hint, frameBase64 } = req.body;
-    const room = memoryDB.pvp_rooms[roomId];
-    if (!room) {
+    if (!roomId) {
         return res.json({ matched: false });
     }
     const clientKey = (deviceId || username || '').toLowerCase();
+    let room = memoryDB.pvp_rooms[roomId];
+    if (!room) {
+        room = {
+            roomId,
+            exercise: 'PUSHUP',
+            durationSec: 30,
+            player1: {
+                clientKey,
+                username: username || 'Player 1',
+                avatar: '🧑‍🎤',
+                level: 1,
+                attackDamage: 50,
+                reps: 0,
+                score: 0,
+                angle: 165,
+                hint: 'Đang vào tư thế',
+                frameBase64: null
+            },
+            player2: {
+                clientKey: '',
+                username: '',
+                avatar: '🧑‍🎤',
+                level: 1,
+                attackDamage: 50,
+                reps: 0,
+                score: 0,
+                angle: 165,
+                hint: 'Đang vào tư thế',
+                frameBase64: null
+            },
+            createdAt: Date.now()
+        };
+        memoryDB.pvp_rooms[roomId] = room;
+    }
+
     const isP1 = (room.player1.clientKey || room.player1.username.toLowerCase()) === clientKey ||
                  room.player1.username.toLowerCase() === (username || '').toLowerCase();
+    if (!isP1 && !room.player2.clientKey) {
+        room.player2.clientKey = clientKey;
+        room.player2.username = username || 'Đối Thủ';
+    }
     const mySlot = isP1 ? room.player1 : room.player2;
     const oppSlot = isP1 ? room.player2 : room.player1;
 
+    if (username) mySlot.username = username;
     if (typeof reps === 'number') mySlot.reps = Math.max(mySlot.reps || 0, reps);
     if (typeof score === 'number') mySlot.score = Math.max(mySlot.score || 0, score);
     if (typeof angle === 'number') mySlot.angle = angle;
@@ -2039,7 +2078,7 @@ function publishTunnelUrl(tunnelUrl) {
     try {
         const data = JSON.stringify({ tunnelUrl, ts: Date.now() });
         const req = https.request(
-            'https://ntfy.sh/vigil_active_server_url_v3',
+            'https://ntfy.sh/vigil_active_server_url_v4',
             {
                 method: 'POST',
                 rejectUnauthorized: false,
@@ -2063,7 +2102,7 @@ function startPublicTunnel() {
             '-o', 'StrictHostKeyChecking=no',
             '-o', 'ServerAliveInterval=30',
             '-o', 'ExitOnForwardFailure=yes',
-            '-R', `80:localhost:${PORT}`,
+            '-R', `80:127.0.0.1:${PORT}`,
             'nokey@localhost.run'
         ]);
         let publishedUrl = '';
