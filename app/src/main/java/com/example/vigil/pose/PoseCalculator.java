@@ -33,13 +33,15 @@ public class PoseCalculator {
     private String hint = "Đứng vào khung hình";
     private int angleNow = 0;
     private boolean contracted = false;
+    private boolean readyForRep = false;
+    private int contractStreak = 0;
+    private int extendStreak = 0;
 
     private final Deque<Double> buffer = new ArrayDeque<>();
     private long holdMs = 0L;
     private long lastTs = 0L;
     private long lastRepTime = 0L;
-    private double baselineShoulderY = -1.0;
-    private double baselineShoulderSpan = -1.0;
+    private long contractedAtMs = 0L;
 
     private OnRepListener onRepListener;
 
@@ -84,28 +86,28 @@ public class PoseCalculator {
                         L ? PoseLandmark.LEFT_SHOULDER : PoseLandmark.RIGHT_SHOULDER,
                         L ? PoseLandmark.LEFT_ELBOW : PoseLandmark.RIGHT_ELBOW,
                         L ? PoseLandmark.LEFT_WRIST : PoseLandmark.RIGHT_WRIST,
-                        112.0, 145.0
+                        95.0, 155.0
                 );
             case PULLUP:
                 return new PoseConfig(
                         L ? PoseLandmark.LEFT_SHOULDER : PoseLandmark.RIGHT_SHOULDER,
                         L ? PoseLandmark.LEFT_ELBOW : PoseLandmark.RIGHT_ELBOW,
                         L ? PoseLandmark.LEFT_WRIST : PoseLandmark.RIGHT_WRIST,
-                        95.0, 142.0
+                        75.0, 150.0
                 );
             case SQUAT:
                 return new PoseConfig(
                         L ? PoseLandmark.LEFT_HIP : PoseLandmark.RIGHT_HIP,
                         L ? PoseLandmark.LEFT_KNEE : PoseLandmark.RIGHT_KNEE,
                         L ? PoseLandmark.LEFT_ANKLE : PoseLandmark.RIGHT_ANKLE,
-                        120.0, 152.0
+                        105.0, 160.0
                 );
             case SITUP:
                 return new PoseConfig(
                         L ? PoseLandmark.LEFT_SHOULDER : PoseLandmark.RIGHT_SHOULDER,
                         L ? PoseLandmark.LEFT_HIP : PoseLandmark.RIGHT_HIP,
                         L ? PoseLandmark.LEFT_KNEE : PoseLandmark.RIGHT_KNEE,
-                        98.0, 125.0
+                        80.0, 125.0
                 );
             case PLANK:
             default:
@@ -113,7 +115,7 @@ public class PoseCalculator {
                         L ? PoseLandmark.LEFT_SHOULDER : PoseLandmark.RIGHT_SHOULDER,
                         L ? PoseLandmark.LEFT_HIP : PoseLandmark.RIGHT_HIP,
                         L ? PoseLandmark.LEFT_ANKLE : PoseLandmark.RIGHT_ANKLE,
-                        0.0, 145.0
+                        0.0, 160.0
                 );
         }
     }
@@ -130,11 +132,17 @@ public class PoseCalculator {
 
     public static boolean isVisible(PoseLandmark... landmarks) {
         for (PoseLandmark l : landmarks) {
-            if (l == null || l.getInFrameLikelihood() <= 0.22f) {
+            if (l == null || l.getInFrameLikelihood() <= 0.55f) {
                 return false;
             }
         }
         return true;
+    }
+
+    private static boolean hasValidLimbLength(PoseLandmark a, PoseLandmark b, PoseLandmark c) {
+        double ab = Math.hypot(a.getPosition().x - b.getPosition().x, a.getPosition().y - b.getPosition().y);
+        double bc = Math.hypot(c.getPosition().x - b.getPosition().x, c.getPosition().y - b.getPosition().y);
+        return ab >= 8.0 && bc >= 8.0;
     }
 
     public void processPose(Pose pose) {
@@ -149,130 +157,55 @@ public class PoseCalculator {
         PoseLandmark b = pose.getPoseLandmark(cfg.b);
         PoseLandmark d = pose.getPoseLandmark(cfg.c);
 
-        // Nếu nửa người bên ưu tiên bị khuất, tự động thử nửa người bên kia
-        if (!isVisible(a, b, d)) {
+        if (!isVisible(a, b, d) || !hasValidLimbLength(a, b, d)) {
             PoseConfig altCfg = getConfig(exercise, !preferLeft);
             PoseLandmark altA = pose.getPoseLandmark(altCfg.a);
             PoseLandmark altB = pose.getPoseLandmark(altCfg.b);
             PoseLandmark altD = pose.getPoseLandmark(altCfg.c);
-            if (isVisible(altA, altB, altD)) {
+            if (isVisible(altA, altB, altD) && hasValidLimbLength(altA, altB, altD)) {
                 cfg = altCfg;
                 a = altA;
                 b = altB;
                 d = altD;
+            } else {
+                buffer.clear();
+                contractStreak = 0;
+                extendStreak = 0;
+                hint = "Hãy để cả người vào khung hình";
+                lastTs = 0L;
+                return;
             }
         }
 
-        // Fallback thông minh khi đặt điện thoại trên bàn/sàn không lấy hết cổ chân hoặc cổ tay
-        if (!isVisible(a, b, d)) {
-            if (exercise == Exercise.SQUAT) {
-                PoseConfig hipCfg = new PoseConfig(
-                        preferLeft ? PoseLandmark.LEFT_SHOULDER : PoseLandmark.RIGHT_SHOULDER,
-                        preferLeft ? PoseLandmark.LEFT_HIP : PoseLandmark.RIGHT_HIP,
-                        preferLeft ? PoseLandmark.LEFT_KNEE : PoseLandmark.RIGHT_KNEE,
-                        122.0, 152.0
-                );
-                PoseLandmark ha = pose.getPoseLandmark(hipCfg.a);
-                PoseLandmark hb = pose.getPoseLandmark(hipCfg.b);
-                PoseLandmark hd = pose.getPoseLandmark(hipCfg.c);
-                if (isVisible(ha, hb, hd)) {
-                    cfg = hipCfg;
-                    a = ha;
-                    b = hb;
-                    d = hd;
-                }
-            } else if (exercise == Exercise.PLANK) {
-                PoseConfig plankKneeCfg = new PoseConfig(
-                        preferLeft ? PoseLandmark.LEFT_SHOULDER : PoseLandmark.RIGHT_SHOULDER,
-                        preferLeft ? PoseLandmark.LEFT_HIP : PoseLandmark.RIGHT_HIP,
-                        preferLeft ? PoseLandmark.LEFT_KNEE : PoseLandmark.RIGHT_KNEE,
-                        0.0, 140.0
-                );
-                PoseLandmark pa = pose.getPoseLandmark(plankKneeCfg.a);
-                PoseLandmark pb = pose.getPoseLandmark(plankKneeCfg.b);
-                PoseLandmark pd = pose.getPoseLandmark(plankKneeCfg.c);
-                if (isVisible(pa, pb, pd)) {
-                    cfg = plankKneeCfg;
-                    a = pa;
-                    b = pb;
-                    d = pd;
-                }
+        // Kiểm tra tư thế chuẩn theo từng bài tập để tránh vung tay / di chuyển nhẹ bị tính nhầm rep
+        if (exercise == Exercise.PUSHUP || exercise == Exercise.DIP) {
+            // Khi chống đẩy hoặc Dip, cổ tay chống dưới sàn/xà phải nằm thấp hơn khuỷu tay và vai trên khung hình
+            if (d.getPosition().y <= b.getPosition().y || d.getPosition().y <= a.getPosition().y) {
+                contractStreak = 0;
+                extendStreak = 0;
+                hint = "Chống hai tay xuống sàn để bắt đầu";
+                return;
             }
-        }
-
-        if (!isVisible(a, b, d)) {
-            // Fallback 2: Khi người chơi đặt điện thoại trước mặt (Video Call) chỉ thấy đầu & 2 vai (cổ tay/cổ chân nằm ngoài khung hình)
-            if (isVisible(leftShoulder, rightShoulder)) {
-                double midY = (leftShoulder.getPosition().y + rightShoulder.getPosition().y) * 0.5;
-                double span = Math.hypot(
-                        leftShoulder.getPosition().x - rightShoulder.getPosition().x,
-                        leftShoulder.getPosition().y - rightShoulder.getPosition().y
-                );
-                if (span > 8.0) {
-                    if (baselineShoulderY < 0.0 || midY < baselineShoulderY) {
-                        baselineShoulderY = midY;
-                    } else {
-                        baselineShoulderY = baselineShoulderY * 0.992 + midY * 0.008;
-                    }
-                    if (baselineShoulderSpan < 0.0 || span < baselineShoulderSpan) {
-                        baselineShoulderSpan = span;
-                    } else {
-                        baselineShoulderSpan = baselineShoulderSpan * 0.992 + span * 0.008;
-                    }
-
-                    double dropRatio = (midY - baselineShoulderY) / Math.max(span, 20.0);
-                    double zoomRatio = (span - baselineShoulderSpan) / Math.max(baselineShoulderSpan, 20.0);
-                    double motionRatio = Math.max(dropRatio / 0.22, zoomRatio / 0.16);
-                    double clamped = Math.max(0.0, Math.min(1.0, motionRatio));
-                    double virtualAngle = 165.0 - (clamped * 75.0); // 165° (đứng/đẩy thẳng) -> 90° (hạ người xuống)
-                    angleNow = (int) virtualAngle;
-
-                    if (exercise == Exercise.PLANK) {
-                        long now = System.currentTimeMillis();
-                        if (lastTs != 0L) {
-                            holdMs += Math.min(now - lastTs, 500L);
-                        }
-                        lastTs = now;
-                        int oldScore = holdSeconds / 2;
-                        holdSeconds = (int) (holdMs / 1000L);
-                        int newScore = holdSeconds / 2;
-                        if (newScore > oldScore && newScore > 0 && onRepListener != null) {
-                            onRepListener.onRep(newScore);
-                        }
-                        hint = "Giữ vững tư thế Plank!";
-                        return;
-                    }
-
-                    if (virtualAngle <= 112.0 && !contracted) {
-                        contracted = true;
-                        hint = "Tốt! Giờ đẩy/nâng người lên";
-                    } else if (virtualAngle >= 145.0 && contracted) {
-                        long now = System.currentTimeMillis();
-                        if (now - lastRepTime >= 380L) {
-                            contracted = false;
-                            reps++;
-                            lastRepTime = now;
-                            hint = "+1 rep!";
-                            if (onRepListener != null) {
-                                onRepListener.onRep(reps);
-                            }
-                        }
-                    } else if (!contracted) {
-                        hint = "Hạ người xuống (" + angleNow + "°)";
-                    } else {
-                        hint = "Đẩy/nâng người lên (" + angleNow + "°)";
-                    }
-                    return;
-                }
+        } else if (exercise == Exercise.PULLUP) {
+            // Khi kéo xà, cổ tay nắm xà phải nằm cao hơn khuỷu tay
+            if (d.getPosition().y >= b.getPosition().y) {
+                contractStreak = 0;
+                extendStreak = 0;
+                hint = "Hai tay nắm xà phía trên đầu";
+                return;
             }
-
-            hint = "Hãy để người vào khung hình";
-            lastTs = 0L;
-            return;
+        } else if (exercise == Exercise.SQUAT) {
+            // Khi Squat, mắt cá chân phải thấp hơn đầu gối và đầu gối thấp hơn hông
+            if (d.getPosition().y <= b.getPosition().y || b.getPosition().y < a.getPosition().y - 10f) {
+                contractStreak = 0;
+                extendStreak = 0;
+                hint = "Đứng thẳng toàn thân trong khung hình";
+                return;
+            }
         }
 
         buffer.addLast(calculateAngle(a, b, d));
-        if (buffer.size() > 3) {
+        if (buffer.size() > 5) {
             buffer.removeFirst();
         }
 
@@ -284,8 +217,9 @@ public class PoseCalculator {
         angleNow = (int) ang;
 
         if (exercise == Exercise.PLANK) {
+            boolean horizontal = Math.abs(a.getPosition().y - b.getPosition().y) < Math.abs(a.getPosition().x - b.getPosition().x);
             long now = System.currentTimeMillis();
-            if (ang > cfg.extend) {
+            if (ang > cfg.extend && horizontal) {
                 if (lastTs != 0L) {
                     holdMs += Math.min(now - lastTs, 500L);
                 }
@@ -301,29 +235,61 @@ public class PoseCalculator {
                 hint = "Giữ vững! Lưng thẳng";
             } else {
                 lastTs = 0L;
-                hint = "Giữ thẳng người từ vai tới hông";
+                hint = "Giữ thẳng người từ vai tới gót";
             }
             return;
         }
 
-        if (ang <= cfg.contract && !contracted) {
-            contracted = true;
-            hint = "Tốt! Giờ đẩy/nâng người lên";
-        } else if (ang >= cfg.extend && contracted) {
-            long now = System.currentTimeMillis();
-            if (now - lastRepTime >= 380L) {
-                contracted = false;
-                reps++;
-                lastRepTime = now;
-                hint = "+1 rep!";
-                if (onRepListener != null) {
-                    onRepListener.onRep(reps);
+        // Phải vào tư thế chuẩn bị (duỗi thẳng tay/chân) trước khi bắt đầu tính chu kỳ rep
+        if (!readyForRep) {
+            if (ang >= cfg.extend - 8.0) {
+                extendStreak++;
+                if (extendStreak >= 2) {
+                    readyForRep = true;
+                    extendStreak = 0;
                 }
+            } else {
+                extendStreak = 0;
             }
-        } else if (!contracted) {
-            hint = "Hạ xuống thêm chút nữa (" + angleNow + "° -> " + (int) cfg.contract + "°)";
+            hint = "Duỗi thẳng vào tư thế chuẩn bị (" + angleNow + "°)";
+            return;
+        }
+
+        if (!contracted) {
+            if (ang < cfg.contract) {
+                contractStreak++;
+                if (contractStreak >= 2) {
+                    contracted = true;
+                    contractStreak = 0;
+                    extendStreak = 0;
+                    contractedAtMs = System.currentTimeMillis();
+                    hint = "Tốt! Giờ đẩy/nâng thẳng lên";
+                }
+            } else {
+                contractStreak = 0;
+                hint = "Hạ xuống thấp hơn (" + angleNow + "° -> " + (int) cfg.contract + "°)";
+            }
         } else {
-            hint = "Nâng thẳng lên (" + angleNow + "° -> " + (int) cfg.extend + "°)";
+            if (ang > cfg.extend) {
+                extendStreak++;
+                if (extendStreak >= 2) {
+                    long now = System.currentTimeMillis();
+                    if (now - contractedAtMs >= 300L && now - lastRepTime >= 850L) {
+                        contracted = false;
+                        contractStreak = 0;
+                        extendStreak = 0;
+                        reps++;
+                        lastRepTime = now;
+                        hint = "+1 rep!";
+                        if (onRepListener != null) {
+                            onRepListener.onRep(reps);
+                        }
+                    }
+                }
+            } else {
+                extendStreak = 0;
+                hint = "Đẩy/nâng thẳng hết cỡ (" + angleNow + "° -> " + (int) cfg.extend + "°)";
+            }
         }
     }
 }
