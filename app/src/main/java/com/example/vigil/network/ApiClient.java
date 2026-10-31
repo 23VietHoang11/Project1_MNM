@@ -47,9 +47,12 @@ public class ApiClient {
             "http://192.168.1.152:3000",
             "http://127.0.0.1:3000"
     };
+    private static final String TUNNEL_CONFIG_URL = "https://ntfy.sh/vigil_active_server_url_v3";
     private static final String CLOUD_LOBBY_URL = "https://ntfy.sh/vigil_pvp_global_lobby_v6";
     public static final String DEVICE_ID = UUID.randomUUID().toString().replace("-", "").substring(0, 8);
 
+    private static volatile String discoveredTunnelUrl = "";
+    private static volatile long lastTunnelLookupMs = 0L;
     private static String currentSeekToken = UUID.randomUUID().toString().replace("-", "").substring(0, 8);
     private static final Set<String> consumedSeekTokens = Collections.synchronizedSet(new HashSet<>());
     private static long lastCloudSeekPostMs = 0L;
@@ -805,6 +808,41 @@ public class ApiClient {
         return joinPvpQueue(username, avatar, level, attackDamage, exercise, durationSec, false);
     }
 
+    private static void refreshTunnelUrlIfNeeded() {
+        long now = System.currentTimeMillis();
+        if (!discoveredTunnelUrl.isEmpty() && (now - lastTunnelLookupMs) < 30000L) {
+            return;
+        }
+        lastTunnelLookupMs = now;
+        try {
+            Request req = new Request.Builder()
+                    .url(TUNNEL_CONFIG_URL + "/json?poll=1&since=12h")
+                    .get()
+                    .build();
+            try (Response res = client.newCall(req).execute()) {
+                if (res.isSuccessful() && res.body() != null) {
+                    String[] lines = res.body().string().split("\n");
+                    for (String line : lines) {
+                        String trimmed = line.trim();
+                        if (trimmed.isEmpty()) continue;
+                        try {
+                            JsonObject env = gson.fromJson(trimmed, JsonObject.class);
+                            if (env != null && env.has("message") && !env.get("message").isJsonNull()) {
+                                JsonObject payload = gson.fromJson(env.get("message").getAsString(), JsonObject.class);
+                                if (payload != null && payload.has("tunnelUrl") && !payload.get("tunnelUrl").isJsonNull()) {
+                                    String url = payload.get("tunnelUrl").getAsString().trim();
+                                    if (url.startsWith("http")) {
+                                        discoveredTunnelUrl = url;
+                                    }
+                                }
+                            }
+                        } catch (Exception ignored) {}
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+    }
+
     public static PvpRoomSyncState joinPvpQueue(
             String username,
             String avatar,
@@ -826,31 +864,15 @@ public class ApiClient {
             cachedOppFrame = null;
         }
 
-        // 1. Thử ghép trận qua Server nội bộ (tự động dò Emulator 10.0.2.2 và LAN Wi-Fi)
-        boolean localOnline = false;
+        // 1. Ưu tiên ghép trận qua Server Vigil (tự động dò Emulator 10.0.2.2, LAN Wi-Fi 192.168.1.152 và Public HTTPS Tunnel)
+        //    Nhờ Public HTTPS Tunnel, cả máy ảo lẫn điện thoại thật bật VPN/4G đều trỏ về đúng 1 Server duy nhất (Không giới hạn băng thông HD)
         PvpRoomSyncState localState = tryLocalJoinPvpQueue(username, avatar, level, attackDamage, exercise, durationSec, resetQueue);
         if (localState.getServerOnline()) {
-            localOnline = true;
-            if (localState.getMatched()) {
-                return localState;
-            }
+            return localState;
         }
 
-        // 2. Đồng thời ghép trận qua Cloud Relay toàn cầu để 2 thiết bị Android bất kỳ
-        //    (2 điện thoại thật, 1 máy ảo + 1 máy thật, hoặc 2 máy tính khác nhau) luôn tìm thấy nhau!
-        PvpRoomSyncState cloudState = tryCloudJoinPvpQueue(username, avatar, level, attackDamage, exercise, durationSec, resetQueue);
-        if (cloudState.getMatched()) {
-            // Hủy hàng chờ dư trên local server nếu đã ghép thành công qua Cloud
-            if (localOnline) {
-                cancelLocalPvpQueue(username);
-            }
-            return cloudState;
-        }
-
-        return new PvpRoomSyncState(
-                false, "", "", "🧑‍🎤", 1, 50, 0, 0, 165, "", null, "", 0,
-                localOnline || cloudState.getServerOnline()
-        );
+        // 2. Fallback qua Cloud Relay nếu máy chủ Server Node.js đang tắt hoàn toàn
+        return tryCloudJoinPvpQueue(username, avatar, level, attackDamage, exercise, durationSec, resetQueue);
     }
 
     private static PvpRoomSyncState tryLocalJoinPvpQueue(
@@ -862,6 +884,8 @@ public class ApiClient {
             int durationSec,
             boolean resetQueue
     ) {
+        refreshTunnelUrlIfNeeded();
+
         JsonObject body = new JsonObject();
         body.addProperty("deviceId", DEVICE_ID);
         body.addProperty("username", username);
@@ -875,6 +899,9 @@ public class ApiClient {
 
         List<String> urlsToTry = new ArrayList<>();
         urlsToTry.add(baseUrl);
+        if (!discoveredTunnelUrl.isEmpty() && !urlsToTry.contains(discoveredTunnelUrl)) {
+            urlsToTry.add(discoveredTunnelUrl);
+        }
         for (String candidate : LOCAL_CANDIDATE_URLS) {
             if (!urlsToTry.contains(candidate)) {
                 urlsToTry.add(candidate);
@@ -883,11 +910,12 @@ public class ApiClient {
 
         for (String candidateBase : urlsToTry) {
             try {
+                OkHttpClient http = candidateBase.startsWith("https://") ? client : fastLocalClient;
                 Request req = new Request.Builder()
                         .url(candidateBase + "/api/pvp/queue/join")
                         .post(reqBody)
                         .build();
-                try (Response res = fastLocalClient.newCall(req).execute()) {
+                try (Response res = http.newCall(req).execute()) {
                     if (res.isSuccessful() && res.body() != null) {
                         baseUrl = candidateBase;
                         JsonObject obj = gson.fromJson(res.body().string(), JsonObject.class);
@@ -1041,11 +1069,12 @@ public class ApiClient {
 
     public static PvpRoomSyncState checkPvpQueueStatus(String username) {
         try {
+            OkHttpClient http = baseUrl.startsWith("https://") ? client : fastLocalClient;
             Request req = new Request.Builder()
                     .url(baseUrl + "/api/pvp/queue/status?username=" + username + "&deviceId=" + DEVICE_ID)
                     .get()
                     .build();
-            try (Response res = fastLocalClient.newCall(req).execute()) {
+            try (Response res = http.newCall(req).execute()) {
                 if (!res.isSuccessful() || res.body() == null) return new PvpRoomSyncState(false, "", "", "🧑‍🎤", 1, 50, 0, 0, 165, "", null, "", 0, false);
                 JsonObject obj = gson.fromJson(res.body().string(), JsonObject.class);
                 return parsePvpRoomSync(obj);
@@ -1057,12 +1086,13 @@ public class ApiClient {
 
     private static void cancelLocalPvpQueue(String username) {
         try {
+            OkHttpClient http = baseUrl.startsWith("https://") ? client : fastLocalClient;
             JsonObject body = new JsonObject();
             body.addProperty("deviceId", DEVICE_ID);
             body.addProperty("username", username);
             RequestBody reqBody = RequestBody.create(jsonMediaType, body.toString());
             Request req = new Request.Builder().url(baseUrl + "/api/pvp/queue/cancel").post(reqBody).build();
-            try (Response ignored = fastLocalClient.newCall(req).execute()) {}
+            try (Response ignored = http.newCall(req).execute()) {}
         } catch (Exception ignored) {}
     }
 
@@ -1095,6 +1125,7 @@ public class ApiClient {
             return syncCloudPvpRoom(roomId, username, reps, score, angle, hint, frameBase64);
         }
         try {
+            OkHttpClient http = baseUrl.startsWith("https://") ? client : fastLocalClient;
             JsonObject body = new JsonObject();
             body.addProperty("roomId", roomId);
             body.addProperty("deviceId", DEVICE_ID);
@@ -1107,7 +1138,7 @@ public class ApiClient {
             RequestBody reqBody = RequestBody.create(jsonMediaType, body.toString());
 
             Request req = new Request.Builder().url(baseUrl + "/api/pvp/room/sync").post(reqBody).build();
-            try (Response res = fastLocalClient.newCall(req).execute()) {
+            try (Response res = http.newCall(req).execute()) {
                 if (!res.isSuccessful() || res.body() == null) return new PvpRoomSyncState(false, "", "", "🧑‍🎤", 1, 50, 0, 0, 165, "", null, "", 0, false);
                 JsonObject obj = gson.fromJson(res.body().string(), JsonObject.class);
                 return parsePvpRoomSync(obj);
@@ -1142,7 +1173,7 @@ public class ApiClient {
 
         long nowMs = System.currentTimeMillis();
         boolean scoreChanged = (reps != lastPublishedReps) || (score != lastPublishedScore);
-        if (scoreChanged || (nowMs - lastCloudRoomPostMs) >= 900L) {
+        if (scoreChanged || (nowMs - lastCloudRoomPostMs) >= 1600L) {
             try {
                 JsonObject syncPayload = new JsonObject();
                 syncPayload.addProperty("d", DEVICE_ID);
@@ -1151,8 +1182,13 @@ public class ApiClient {
                 syncPayload.addProperty("s", score);
                 syncPayload.addProperty("a", angle);
                 syncPayload.addProperty("h", hint != null ? hint : "");
-                if (frameBase64 != null && frameBase64.length() < 3300) {
-                    syncPayload.addProperty("f", frameBase64);
+                if (!scoreChanged && frameBase64 != null && !frameBase64.isEmpty()) {
+                    String compactFrame = frameBase64.length() <= 3300
+                            ? frameBase64
+                            : shrinkFrameForCloudRelay(frameBase64);
+                    if (compactFrame != null && compactFrame.length() <= 3300) {
+                        syncPayload.addProperty("f", compactFrame);
+                    }
                 }
                 Request postReq = new Request.Builder()
                         .url(roomUrl)
@@ -1193,8 +1229,8 @@ public class ApiClient {
                             String senderDev = msg.get("d").getAsString();
                             if (senderDev.equals(DEVICE_ID)) continue;
 
-                            if (msg.has("r")) cachedOppReps = msg.get("r").getAsInt();
-                            if (msg.has("s")) cachedOppScore = msg.get("s").getAsInt();
+                            if (msg.has("r")) cachedOppReps = Math.max(cachedOppReps, msg.get("r").getAsInt());
+                            if (msg.has("s")) cachedOppScore = Math.max(cachedOppScore, msg.get("s").getAsInt());
                             if (msg.has("a")) cachedOppAngle = msg.get("a").getAsInt();
                             if (msg.has("h") && !msg.get("h").isJsonNull()) cachedOppHint = msg.get("h").getAsString();
                             if (msg.has("f") && !msg.get("f").isJsonNull()) {
@@ -1223,6 +1259,26 @@ public class ApiClient {
                 0,
                 true
         );
+    }
+
+    private static String shrinkFrameForCloudRelay(String frameBase64) {
+        try {
+            byte[] raw = android.util.Base64.decode(frameBase64, android.util.Base64.DEFAULT);
+            android.graphics.Bitmap bmp = android.graphics.BitmapFactory.decodeByteArray(raw, 0, raw.length);
+            if (bmp == null) return null;
+            android.graphics.Bitmap small = android.graphics.Bitmap.createScaledBitmap(bmp, 150, 206, true);
+            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+            small.compress(android.graphics.Bitmap.CompressFormat.JPEG, 36, out);
+            if (out.size() > 2350) {
+                out.reset();
+                small.compress(android.graphics.Bitmap.CompressFormat.JPEG, 24, out);
+            }
+            if (small != bmp) small.recycle();
+            bmp.recycle();
+            return android.util.Base64.encodeToString(out.toByteArray(), android.util.Base64.NO_WRAP);
+        } catch (Throwable ignored) {
+            return null;
+        }
     }
 
     private static PvpRoomSyncState parsePvpRoomSync(JsonObject obj) {

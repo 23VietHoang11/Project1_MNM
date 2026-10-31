@@ -31,6 +31,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -203,8 +204,8 @@ fun PvpArenaScreen(
                     p1Score += calcPointsForRep(p1Reps)
                 },
                 onRemoteOpponentSync = { rReps, rScore, rAngle, rHint, rFrame ->
-                    p2Reps = rReps
-                    p2Score = rScore
+                    if (rReps > p2Reps) p2Reps = rReps
+                    if (rScore > p2Score) p2Score = rScore
                     p2Angle = rAngle
                     if (rHint.isNotBlank()) p2Hint = rHint
                     if (!rFrame.isNullOrBlank()) p2FrameBase64 = rFrame
@@ -871,7 +872,7 @@ private fun PvpMessengerVideoBattleView(
     }
 
     var remainingSec by remember(durationSec) { mutableIntStateOf(durationSec) }
-    var useFrontCamera by remember { mutableStateOf(false) } // Mặc định Back Camera an toàn trên mọi Emulator
+    var useFrontCamera by remember { mutableStateOf(true) } // Mặc định Camera Trước chuẩn Video Call (tự động fallback nếu máy không có)
     var swapPipView by remember { mutableStateOf(false) }   // false = Đối phương ở màn hình lớn, Bản thân ở góc PiP (chuẩn Messenger)
 
     val counter = remember(exercise) { RepCounter(exercise) }
@@ -879,17 +880,24 @@ private fun PvpMessengerVideoBattleView(
     var myLatestFrameBase64 by remember { mutableStateOf<String?>(null) }
     var scorePopup by remember { mutableStateOf<String?>(null) }
 
+    // Luôn lấy giá trị Điểm & Rep mới nhất trong các vòng lặp Coroutine (tránh lỗi closure giữ giá trị 0 ban đầu)
+    val latestP1Reps by rememberUpdatedState(p1Reps)
+    val latestP1Score by rememberUpdatedState(p1Score)
+    val latestOnP1Rep by rememberUpdatedState(onP1RepFromAiCamera)
+    val latestOnRemoteSync by rememberUpdatedState(onRemoteOpponentSync)
+    val latestOnFinishCall by rememberUpdatedState(onFinishCall)
+
     // Nhận diện rep hoàn toàn tự động từ Camera AI Pose của bản thân
     LaunchedEffect(counter) {
         counter.onRepCompleted = {
-            onP1RepFromAiCamera()
+            latestOnP1Rep()
             scorePopup = "⚡ $p1Name +1 REP!"
         }
     }
 
     LaunchedEffect(counter.holdSeconds) {
         if (exercise == Exercise.PLANK && counter.holdSeconds > 0 && counter.holdSeconds % 2 == 0) {
-            onP1RepFromAiCamera()
+            latestOnP1Rep()
             scorePopup = "⚡ $p1Name +2s PLANK!"
         }
     }
@@ -901,17 +909,42 @@ private fun PvpMessengerVideoBattleView(
         }
     }
 
-    // Đồng hồ đếm ngược thời gian trận đấu
+    // Đồng hồ đếm ngược thời gian trận đấu + Đồng bộ chốt điểm cuối trận trước khi tổng kết Thắng/Thua
     LaunchedEffect(remainingSec) {
         if (remainingSec <= 0) {
-            onFinishCall()
+            if (roomId.isNotBlank()) {
+                repeat(2) {
+                    val finalSync = withContext(Dispatchers.IO) {
+                        ApiClient.syncPvpRoom(
+                            roomId,
+                            p1Name,
+                            latestP1Reps,
+                            latestP1Score,
+                            counter.angleNow,
+                            counter.hint,
+                            myLatestFrameBase64
+                        )
+                    }
+                    if (finalSync.matched) {
+                        latestOnRemoteSync(
+                            finalSync.opponentReps,
+                            finalSync.opponentScore,
+                            finalSync.opponentAngle,
+                            finalSync.opponentHint,
+                            finalSync.opponentFrameBase64
+                        )
+                    }
+                    delay(220L)
+                }
+            }
+            latestOnFinishCall()
             return@LaunchedEffect
         }
         delay(1000L)
         remainingSec -= 1
     }
 
-    // Đồng bộ khung hình Video Call + Điểm số + Góc khớp thời gian thực (mỗi 500ms) giữa 2 tài khoản Online
+    // Đồng bộ khung hình Video Call HD + Điểm số + Góc khớp thời gian thực (mỗi 250ms ~ 4 FPS) giữa 2 tài khoản Online
     LaunchedEffect(roomId) {
         if (roomId.isBlank()) return@LaunchedEffect
         while (remainingSec > 0) {
@@ -919,15 +952,15 @@ private fun PvpMessengerVideoBattleView(
                 ApiClient.syncPvpRoom(
                     roomId,
                     p1Name,
-                    p1Reps,
-                    p1Score,
+                    latestP1Reps,
+                    latestP1Score,
                     counter.angleNow,
                     counter.hint,
                     myLatestFrameBase64
                 )
             }
             if (syncState.matched) {
-                onRemoteOpponentSync(
+                latestOnRemoteSync(
                     syncState.opponentReps,
                     syncState.opponentScore,
                     syncState.opponentAngle,
@@ -935,7 +968,7 @@ private fun PvpMessengerVideoBattleView(
                     syncState.opponentFrameBase64
                 )
             }
-            delay(500L)
+            delay(250L)
         }
     }
 
@@ -1380,6 +1413,7 @@ private fun OpponentLiveVideoFeed(
                 bitmap = remoteBitmap.asImageBitmap(),
                 contentDescription = "Opponent Live Camera Stream",
                 contentScale = ContentScale.Crop,
+                filterQuality = FilterQuality.High,
                 modifier = Modifier.fillMaxSize()
             )
         } else {
@@ -1460,41 +1494,34 @@ private fun OpponentLiveVideoFeed(
             }
         }
 
-        // Nhãn thông tin Camera của đối phương khi ở chế độ màn hình lớn
+        // Nhãn thông tin Camera của đối phương gọn gàng ở góc dưới bên trái (không che giữa màn hình Video)
         if (isFullScreen) {
-            Column(
+            Row(
                 Modifier
-                    .align(Alignment.CenterStart)
-                    .padding(start = 16.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(Color(0xA60F172A))
-                    .border(1.dp, C.Pink.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
-                    .padding(horizontal = 12.dp, vertical = 10.dp)
+                    .align(Alignment.BottomStart)
+                    .navigationBarsPadding()
+                    .padding(start = 14.dp, bottom = 158.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Color(0x990F172A))
+                    .border(1.dp, C.Pink.copy(alpha = 0.45f), RoundedCornerShape(14.dp))
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(opponentAvatar, fontSize = 22.sp)
-                    Spacer(Modifier.width(8.dp))
-                    Column {
-                        Text(
-                            "📹 CAMERA ĐỐI THỦ: $opponentName",
-                            color = C.Pink,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Black
-                        )
-                        Text(
-                            "Cấp $opponentLevel · Đang tập ${exercise.label}",
-                            color = Color.White,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
+                Text(opponentAvatar, fontSize = 18.sp)
+                Spacer(Modifier.width(6.dp))
+                Column {
+                    Text(
+                        "📹 $opponentName (Cấp $opponentLevel)",
+                        color = Color.White,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Black
+                    )
+                    Text(
+                        "Góc khớp: ${opponentAngle}° · $opponentHint",
+                        color = Color(0xFFCBD5E1),
+                        fontSize = 10.sp
+                    )
                 }
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    "Góc khớp đối thủ: ${opponentAngle}° · $opponentHint",
-                    color = Color(0xFFCBD5E1),
-                    fontSize = 11.sp
-                )
             }
         }
     }
@@ -1751,20 +1778,20 @@ private fun PvpSafeCameraPreview(
     val latestOnPose by rememberUpdatedState(onPose)
     val latestOnFrame by rememberUpdatedState(onFrameCaptured)
 
-    // Chụp khung hình trực tiếp từ Camera PreviewView mỗi 550ms để truyền sang màn hình đối phương
+    // Chụp khung hình độ nét cao (320x440) trực tiếp từ Camera PreviewView mỗi 250ms (~4 FPS) để truyền sang màn hình đối phương
     LaunchedEffect(previewView) {
         while (true) {
-            delay(550L)
+            delay(250L)
             val bmp = runCatching { previewView.bitmap }.getOrNull()
             if (bmp != null) {
                 val encoded = withContext(Dispatchers.Default) {
                     runCatching {
-                        val scaled = Bitmap.createScaledBitmap(bmp, 120, 165, true)
+                        val scaled = Bitmap.createScaledBitmap(bmp, 320, 440, true)
                         val out = ByteArrayOutputStream()
-                        scaled.compress(Bitmap.CompressFormat.JPEG, 32, out)
-                        if (out.size() > 2100) {
+                        scaled.compress(Bitmap.CompressFormat.JPEG, 68, out)
+                        if (out.size() > 24000) {
                             out.reset()
-                            scaled.compress(Bitmap.CompressFormat.JPEG, 22, out)
+                            scaled.compress(Bitmap.CompressFormat.JPEG, 52, out)
                         }
                         if (scaled != bmp) scaled.recycle()
                         bmp.recycle()

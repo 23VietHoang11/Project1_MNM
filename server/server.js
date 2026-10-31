@@ -1994,8 +1994,8 @@ app.post('/api/pvp/room/sync', (req, res) => {
     const mySlot = isP1 ? room.player1 : room.player2;
     const oppSlot = isP1 ? room.player2 : room.player1;
 
-    if (typeof reps === 'number') mySlot.reps = reps;
-    if (typeof score === 'number') mySlot.score = score;
+    if (typeof reps === 'number') mySlot.reps = Math.max(mySlot.reps || 0, reps);
+    if (typeof score === 'number') mySlot.score = Math.max(mySlot.score || 0, score);
     if (typeof angle === 'number') mySlot.angle = angle;
     if (hint) mySlot.hint = hint;
     if (frameBase64) mySlot.frameBase64 = frameBase64;
@@ -2031,13 +2031,66 @@ app.get('/api/pvp/history', (req, res) => {
     res.json({ success: true, matches: memoryDB.pvp_matches.slice(0, 20) });
 });
 
+// Tự động mở Public HTTPS Tunnel (localhost.run) và đăng ký lên kênh cấu hình để mọi điện thoại (kể cả bật VPN/4G) kết nối thẳng vào Server
+const { spawn } = require('child_process');
+const https = require('https');
+
+function publishTunnelUrl(tunnelUrl) {
+    try {
+        const data = JSON.stringify({ tunnelUrl, ts: Date.now() });
+        const req = https.request(
+            'https://ntfy.sh/vigil_active_server_url_v3',
+            {
+                method: 'POST',
+                rejectUnauthorized: false,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Content-Length': Buffer.byteLength(data)
+                }
+            },
+            (res) => { res.resume(); }
+        );
+        req.on('error', () => {});
+        req.write(data);
+        req.end();
+    } catch (e) {}
+}
+
+function startPublicTunnel() {
+    try {
+        const sshProc = spawn('ssh', [
+            '-T',
+            '-o', 'StrictHostKeyChecking=no',
+            '-o', 'ServerAliveInterval=30',
+            '-o', 'ExitOnForwardFailure=yes',
+            '-R', `80:localhost:${PORT}`,
+            'nokey@localhost.run'
+        ]);
+        let publishedUrl = '';
+        sshProc.stdout.on('data', (chunk) => {
+            const text = chunk.toString();
+            const match = text.match(/https:\/\/[a-z0-9-]+\.lhr\.life/);
+            if (match && match[0] && match[0] !== publishedUrl) {
+                publishedUrl = match[0];
+                console.log(`🌍 Public HTTPS Tunnel cho mọi thiết bị (4G/VPN/Wi-Fi): ${publishedUrl}`);
+                publishTunnelUrl(publishedUrl);
+            }
+        });
+        sshProc.on('close', () => {
+            setTimeout(startPublicTunnel, 5000);
+        });
+        sshProc.on('error', () => {});
+    } catch (e) {}
+}
+
 // Khởi động server
 initDatabase().then(() => {
     app.listen(PORT, '0.0.0.0', () => {
         console.log(`====================================================`);
         console.log(`🚀 Vigil Backend API đang chạy tại: http://localhost:${PORT}`);
         console.log(`📱 Từ Android Emulator gọi: http://10.0.2.2:${PORT}`);
-        console.log(`🌐 Từ thiết bị thật cùng Wifi: http://<IP_MÁY_BẠN>:${PORT}`);
+        console.log(`🌐 Từ thiết bị thật cùng Wifi: http://192.168.1.152:${PORT}`);
         console.log(`====================================================`);
+        startPublicTunnel();
     });
 });
