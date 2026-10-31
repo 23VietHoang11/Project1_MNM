@@ -13,9 +13,20 @@ import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import java.security.SecureRandom;
+import java.security.cert.X509Certificate;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509TrustManager;
 import kotlin.Pair;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
@@ -26,14 +37,61 @@ import okhttp3.Response;
 
 /**
  * Client kết nối REST API Backend MySQL của Vigil viết bằng Java.
+ * Hỗ trợ tự động dò tìm Server nội bộ (Emulator + LAN Wi-Fi) kết hợp Cloud Relay toàn cầu
+ * giúp 2 thiết bị Android bất kỳ luôn ghép trận và truyền Video Call 1v1 trực tiếp.
  */
 public class ApiClient {
     public static String baseUrl = "http://10.0.2.2:3000";
+    private static final String[] LOCAL_CANDIDATE_URLS = new String[] {
+            "http://10.0.2.2:3000",
+            "http://192.168.1.152:3000",
+            "http://127.0.0.1:3000"
+    };
+    private static final String CLOUD_LOBBY_URL = "https://ntfy.sh/vigil_pvp_global_lobby_v6";
+    public static final String DEVICE_ID = UUID.randomUUID().toString().replace("-", "").substring(0, 8);
 
-    private static final OkHttpClient client = new OkHttpClient.Builder()
-            .connectTimeout(3, TimeUnit.SECONDS)
-            .readTimeout(3, TimeUnit.SECONDS)
-            .build();
+    private static String currentSeekToken = UUID.randomUUID().toString().replace("-", "").substring(0, 8);
+    private static final Set<String> consumedSeekTokens = Collections.synchronizedSet(new HashSet<>());
+    private static long lastCloudSeekPostMs = 0L;
+    private static long lastCloudRoomPostMs = 0L;
+    private static int lastPublishedReps = -1;
+    private static int lastPublishedScore = -1;
+    private static String activeSyncRoomId = "";
+    private static String lastRoomPollSince = "25s";
+    private static int cachedOppReps = 0;
+    private static int cachedOppScore = 0;
+    private static int cachedOppAngle = 165;
+    private static String cachedOppHint = "Đang giữ nhịp tập";
+    private static String cachedOppFrame = null;
+
+    private static OkHttpClient buildTrustAllClient(int connectMs, int readMs) {
+        try {
+            X509TrustManager trustAll = new X509TrustManager() {
+                @Override
+                public void checkClientTrusted(X509Certificate[] chain, String authType) {}
+                @Override
+                public void checkServerTrusted(X509Certificate[] chain, String authType) {}
+                @Override
+                public X509Certificate[] getAcceptedIssuers() { return new X509Certificate[0]; }
+            };
+            SSLContext sslContext = SSLContext.getInstance("TLS");
+            sslContext.init(null, new TrustManager[]{trustAll}, new SecureRandom());
+            return new OkHttpClient.Builder()
+                    .sslSocketFactory(sslContext.getSocketFactory(), trustAll)
+                    .hostnameVerifier((hostname, session) -> true)
+                    .connectTimeout(connectMs, TimeUnit.MILLISECONDS)
+                    .readTimeout(readMs, TimeUnit.MILLISECONDS)
+                    .build();
+        } catch (Exception e) {
+            return new OkHttpClient.Builder()
+                    .connectTimeout(connectMs, TimeUnit.MILLISECONDS)
+                    .readTimeout(readMs, TimeUnit.MILLISECONDS)
+                    .build();
+        }
+    }
+
+    private static final OkHttpClient client = buildTrustAllClient(3000, 3500);
+    private static final OkHttpClient fastLocalClient = buildTrustAllClient(750, 1200);
 
     private static final Gson gson = new Gson();
     private static final MediaType jsonMediaType = MediaType.parse("application/json; charset=utf-8");
@@ -756,22 +814,225 @@ public class ApiClient {
             int durationSec,
             boolean resetQueue
     ) {
-        try {
-            JsonObject body = new JsonObject();
-            body.addProperty("username", username);
-            body.addProperty("avatar", avatar);
-            body.addProperty("level", level);
-            body.addProperty("attackDamage", attackDamage);
-            body.addProperty("exercise", exercise);
-            body.addProperty("durationSec", durationSec);
-            body.addProperty("resetQueue", resetQueue);
-            RequestBody reqBody = RequestBody.create(jsonMediaType, body.toString());
+        if (resetQueue) {
+            currentSeekToken = UUID.randomUUID().toString().replace("-", "").substring(0, 8);
+            lastCloudSeekPostMs = 0L;
+            activeSyncRoomId = "";
+            lastRoomPollSince = "25s";
+            cachedOppReps = 0;
+            cachedOppScore = 0;
+            cachedOppAngle = 165;
+            cachedOppHint = "Đang giữ nhịp tập";
+            cachedOppFrame = null;
+        }
 
-            Request req = new Request.Builder().url(baseUrl + "/api/pvp/queue/join").post(reqBody).build();
-            try (Response res = client.newCall(req).execute()) {
-                if (!res.isSuccessful() || res.body() == null) return new PvpRoomSyncState(false, "", "", "🧑‍🎤", 1, 50, 0, 0, 165, "", null, "", 0, false);
-                JsonObject obj = gson.fromJson(res.body().string(), JsonObject.class);
-                return parsePvpRoomSync(obj);
+        // 1. Thử ghép trận qua Server nội bộ (tự động dò Emulator 10.0.2.2 và LAN Wi-Fi)
+        boolean localOnline = false;
+        PvpRoomSyncState localState = tryLocalJoinPvpQueue(username, avatar, level, attackDamage, exercise, durationSec, resetQueue);
+        if (localState.getServerOnline()) {
+            localOnline = true;
+            if (localState.getMatched()) {
+                return localState;
+            }
+        }
+
+        // 2. Đồng thời ghép trận qua Cloud Relay toàn cầu để 2 thiết bị Android bất kỳ
+        //    (2 điện thoại thật, 1 máy ảo + 1 máy thật, hoặc 2 máy tính khác nhau) luôn tìm thấy nhau!
+        PvpRoomSyncState cloudState = tryCloudJoinPvpQueue(username, avatar, level, attackDamage, exercise, durationSec, resetQueue);
+        if (cloudState.getMatched()) {
+            // Hủy hàng chờ dư trên local server nếu đã ghép thành công qua Cloud
+            if (localOnline) {
+                cancelLocalPvpQueue(username);
+            }
+            return cloudState;
+        }
+
+        return new PvpRoomSyncState(
+                false, "", "", "🧑‍🎤", 1, 50, 0, 0, 165, "", null, "", 0,
+                localOnline || cloudState.getServerOnline()
+        );
+    }
+
+    private static PvpRoomSyncState tryLocalJoinPvpQueue(
+            String username,
+            String avatar,
+            int level,
+            int attackDamage,
+            String exercise,
+            int durationSec,
+            boolean resetQueue
+    ) {
+        JsonObject body = new JsonObject();
+        body.addProperty("deviceId", DEVICE_ID);
+        body.addProperty("username", username);
+        body.addProperty("avatar", avatar);
+        body.addProperty("level", level);
+        body.addProperty("attackDamage", attackDamage);
+        body.addProperty("exercise", exercise);
+        body.addProperty("durationSec", durationSec);
+        body.addProperty("resetQueue", resetQueue);
+        RequestBody reqBody = RequestBody.create(jsonMediaType, body.toString());
+
+        List<String> urlsToTry = new ArrayList<>();
+        urlsToTry.add(baseUrl);
+        for (String candidate : LOCAL_CANDIDATE_URLS) {
+            if (!urlsToTry.contains(candidate)) {
+                urlsToTry.add(candidate);
+            }
+        }
+
+        for (String candidateBase : urlsToTry) {
+            try {
+                Request req = new Request.Builder()
+                        .url(candidateBase + "/api/pvp/queue/join")
+                        .post(reqBody)
+                        .build();
+                try (Response res = fastLocalClient.newCall(req).execute()) {
+                    if (res.isSuccessful() && res.body() != null) {
+                        baseUrl = candidateBase;
+                        JsonObject obj = gson.fromJson(res.body().string(), JsonObject.class);
+                        return parsePvpRoomSync(obj);
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+        return new PvpRoomSyncState(false, "", "", "🧑‍🎤", 1, 50, 0, 0, 165, "", null, "", 0, false);
+    }
+
+    private static PvpRoomSyncState tryCloudJoinPvpQueue(
+            String username,
+            String avatar,
+            int level,
+            int attackDamage,
+            String exercise,
+            int durationSec,
+            boolean resetQueue
+    ) {
+        try {
+            long nowMs = System.currentTimeMillis();
+            if (resetQueue || (nowMs - lastCloudSeekPostMs) >= 2200L) {
+                JsonObject seekObj = new JsonObject();
+                seekObj.addProperty("type", "SEEK");
+                seekObj.addProperty("deviceId", DEVICE_ID);
+                seekObj.addProperty("seekToken", currentSeekToken);
+                seekObj.addProperty("username", username);
+                seekObj.addProperty("avatar", avatar != null ? avatar : "🧑‍🎤");
+                seekObj.addProperty("level", level);
+                seekObj.addProperty("attackDamage", attackDamage);
+                seekObj.addProperty("exercise", exercise != null ? exercise : "PUSHUP");
+                seekObj.addProperty("durationSec", durationSec > 0 ? durationSec : 30);
+
+                Request postReq = new Request.Builder()
+                        .url(CLOUD_LOBBY_URL)
+                        .post(RequestBody.create(jsonMediaType, seekObj.toString()))
+                        .build();
+                try (Response postRes = client.newCall(postReq).execute()) {
+                    if (postRes.isSuccessful()) {
+                        lastCloudSeekPostMs = nowMs;
+                    }
+                }
+            }
+
+            Request pollReq = new Request.Builder()
+                    .url(CLOUD_LOBBY_URL + "/json?poll=1&since=20s")
+                    .get()
+                    .build();
+            try (Response pollRes = client.newCall(pollReq).execute()) {
+                if (!pollRes.isSuccessful() || pollRes.body() == null) {
+                    return new PvpRoomSyncState(false, "", "", "🧑‍🎤", 1, 50, 0, 0, 165, "", null, "", 0, false);
+                }
+                String rawLines = pollRes.body().string();
+                String[] lines = rawLines.split("\n");
+                long maxTime = 0L;
+                List<Pair<Long, JsonObject>> events = new ArrayList<>();
+
+                for (String line : lines) {
+                    String trimmed = line.trim();
+                    if (trimmed.isEmpty()) continue;
+                    try {
+                        JsonObject env = gson.fromJson(trimmed, JsonObject.class);
+                        if (env == null || !env.has("event") || !"message".equals(env.get("event").getAsString())) {
+                            continue;
+                        }
+                        if (!env.has("message") || env.get("message").isJsonNull()) continue;
+                        long t = env.has("time") ? env.get("time").getAsLong() : 0L;
+                        if (t > maxTime) maxTime = t;
+                        JsonObject payload = gson.fromJson(env.get("message").getAsString(), JsonObject.class);
+                        if (payload != null && payload.has("type")) {
+                            events.add(new Pair<>(t, payload));
+                        }
+                    } catch (Exception ignored) {}
+                }
+
+                Map<String, JsonObject> activeSeekers = new LinkedHashMap<>();
+                for (Pair<Long, JsonObject> ev : events) {
+                    long t = ev.getFirst();
+                    JsonObject msg = ev.getSecond();
+                    if (maxTime > 0 && (maxTime - t) > 14L) continue;
+                    String devId = msg.has("deviceId") && !msg.get("deviceId").isJsonNull()
+                            ? msg.get("deviceId").getAsString() : "";
+                    if (devId.isEmpty()) continue;
+                    String type = msg.get("type").getAsString();
+                    if ("SEEK".equals(type)) {
+                        activeSeekers.put(devId, msg);
+                    } else if ("CANCEL".equals(type)) {
+                        activeSeekers.remove(devId);
+                    }
+                }
+
+                for (Map.Entry<String, JsonObject> entry : activeSeekers.entrySet()) {
+                    String otherDevId = entry.getKey();
+                    JsonObject opp = entry.getValue();
+                    if (otherDevId.equals(DEVICE_ID)) continue;
+                    String oppSeekToken = opp.has("seekToken") && !opp.get("seekToken").isJsonNull()
+                            ? opp.get("seekToken").getAsString() : otherDevId;
+                    if (consumedSeekTokens.contains(oppSeekToken)) continue;
+
+                    consumedSeekTokens.add(oppSeekToken);
+                    boolean firstIsMe = DEVICE_ID.compareTo(otherDevId) <= 0;
+                    String d1 = firstIsMe ? DEVICE_ID : otherDevId;
+                    String d2 = firstIsMe ? otherDevId : DEVICE_ID;
+                    String s1 = (firstIsMe ? currentSeekToken : oppSeekToken);
+                    String s2 = (firstIsMe ? oppSeekToken : currentSeekToken);
+                    if (s1.length() > 4) s1 = s1.substring(0, 4);
+                    if (s2.length() > 4) s2 = s2.substring(0, 4);
+
+                    String deterministicRoomId = "vigil_room_" + d1 + "_" + d2 + "_" + s1 + s2;
+                    String oppName = opp.has("username") && !opp.get("username").isJsonNull()
+                            ? opp.get("username").getAsString() : "Đối Thủ Online";
+                    String oppAvt = opp.has("avatar") && !opp.get("avatar").isJsonNull()
+                            ? opp.get("avatar").getAsString() : "🧑‍🎤";
+                    int oppLvl = opp.has("level") && !opp.get("level").isJsonNull()
+                            ? opp.get("level").getAsInt() : 1;
+                    int oppDmg = opp.has("attackDamage") && !opp.get("attackDamage").isJsonNull()
+                            ? opp.get("attackDamage").getAsInt() : 50;
+                    String oppEx = opp.has("exercise") && !opp.get("exercise").isJsonNull()
+                            ? opp.get("exercise").getAsString() : exercise;
+                    int oppDur = opp.has("durationSec") && !opp.get("durationSec").isJsonNull()
+                            ? opp.get("durationSec").getAsInt() : durationSec;
+
+                    String roomEx = firstIsMe ? exercise : oppEx;
+                    int roomDur = firstIsMe ? durationSec : oppDur;
+
+                    return new PvpRoomSyncState(
+                            true,
+                            deterministicRoomId,
+                            oppName,
+                            oppAvt,
+                            oppLvl,
+                            oppDmg,
+                            0,
+                            0,
+                            165,
+                            "Đang vào tư thế",
+                            null,
+                            roomEx,
+                            roomDur,
+                            true
+                    );
+                }
+
+                return new PvpRoomSyncState(false, "", "", "🧑‍🎤", 1, 50, 0, 0, 165, "", null, "", 0, true);
             }
         } catch (Exception e) {
             return new PvpRoomSyncState(false, "", "", "🧑‍🎤", 1, 50, 0, 0, 165, "", null, "", 0, false);
@@ -781,10 +1042,10 @@ public class ApiClient {
     public static PvpRoomSyncState checkPvpQueueStatus(String username) {
         try {
             Request req = new Request.Builder()
-                    .url(baseUrl + "/api/pvp/queue/status?username=" + username)
+                    .url(baseUrl + "/api/pvp/queue/status?username=" + username + "&deviceId=" + DEVICE_ID)
                     .get()
                     .build();
-            try (Response res = client.newCall(req).execute()) {
+            try (Response res = fastLocalClient.newCall(req).execute()) {
                 if (!res.isSuccessful() || res.body() == null) return new PvpRoomSyncState(false, "", "", "🧑‍🎤", 1, 50, 0, 0, 165, "", null, "", 0, false);
                 JsonObject obj = gson.fromJson(res.body().string(), JsonObject.class);
                 return parsePvpRoomSync(obj);
@@ -794,12 +1055,29 @@ public class ApiClient {
         }
     }
 
-    public static void cancelPvpQueue(String username) {
+    private static void cancelLocalPvpQueue(String username) {
         try {
             JsonObject body = new JsonObject();
+            body.addProperty("deviceId", DEVICE_ID);
             body.addProperty("username", username);
             RequestBody reqBody = RequestBody.create(jsonMediaType, body.toString());
             Request req = new Request.Builder().url(baseUrl + "/api/pvp/queue/cancel").post(reqBody).build();
+            try (Response ignored = fastLocalClient.newCall(req).execute()) {}
+        } catch (Exception ignored) {}
+    }
+
+    public static void cancelPvpQueue(String username) {
+        cancelLocalPvpQueue(username);
+        try {
+            JsonObject cancelObj = new JsonObject();
+            cancelObj.addProperty("type", "CANCEL");
+            cancelObj.addProperty("deviceId", DEVICE_ID);
+            cancelObj.addProperty("seekToken", currentSeekToken);
+            cancelObj.addProperty("username", username);
+            Request req = new Request.Builder()
+                    .url(CLOUD_LOBBY_URL)
+                    .post(RequestBody.create(jsonMediaType, cancelObj.toString()))
+                    .build();
             try (Response ignored = client.newCall(req).execute()) {}
         } catch (Exception ignored) {}
     }
@@ -813,9 +1091,13 @@ public class ApiClient {
             String hint,
             String frameBase64
     ) {
+        if (roomId != null && roomId.startsWith("vigil_room_")) {
+            return syncCloudPvpRoom(roomId, username, reps, score, angle, hint, frameBase64);
+        }
         try {
             JsonObject body = new JsonObject();
             body.addProperty("roomId", roomId);
+            body.addProperty("deviceId", DEVICE_ID);
             body.addProperty("username", username);
             body.addProperty("reps", reps);
             body.addProperty("score", score);
@@ -825,7 +1107,7 @@ public class ApiClient {
             RequestBody reqBody = RequestBody.create(jsonMediaType, body.toString());
 
             Request req = new Request.Builder().url(baseUrl + "/api/pvp/room/sync").post(reqBody).build();
-            try (Response res = client.newCall(req).execute()) {
+            try (Response res = fastLocalClient.newCall(req).execute()) {
                 if (!res.isSuccessful() || res.body() == null) return new PvpRoomSyncState(false, "", "", "🧑‍🎤", 1, 50, 0, 0, 165, "", null, "", 0, false);
                 JsonObject obj = gson.fromJson(res.body().string(), JsonObject.class);
                 return parsePvpRoomSync(obj);
@@ -833,6 +1115,114 @@ public class ApiClient {
         } catch (Exception e) {
             return new PvpRoomSyncState(false, "", "", "🧑‍🎤", 1, 50, 0, 0, 165, "", null, "", 0, false);
         }
+    }
+
+    private static PvpRoomSyncState syncCloudPvpRoom(
+            String roomId,
+            String username,
+            int reps,
+            int score,
+            int angle,
+            String hint,
+            String frameBase64
+    ) {
+        String roomUrl = "https://ntfy.sh/" + roomId;
+        if (!roomId.equals(activeSyncRoomId)) {
+            activeSyncRoomId = roomId;
+            lastRoomPollSince = "25s";
+            lastCloudRoomPostMs = 0L;
+            lastPublishedReps = -1;
+            lastPublishedScore = -1;
+            cachedOppReps = 0;
+            cachedOppScore = 0;
+            cachedOppAngle = 165;
+            cachedOppHint = "Đang giữ nhịp tập";
+            cachedOppFrame = null;
+        }
+
+        long nowMs = System.currentTimeMillis();
+        boolean scoreChanged = (reps != lastPublishedReps) || (score != lastPublishedScore);
+        if (scoreChanged || (nowMs - lastCloudRoomPostMs) >= 900L) {
+            try {
+                JsonObject syncPayload = new JsonObject();
+                syncPayload.addProperty("d", DEVICE_ID);
+                syncPayload.addProperty("u", username);
+                syncPayload.addProperty("r", reps);
+                syncPayload.addProperty("s", score);
+                syncPayload.addProperty("a", angle);
+                syncPayload.addProperty("h", hint != null ? hint : "");
+                if (frameBase64 != null && frameBase64.length() < 3300) {
+                    syncPayload.addProperty("f", frameBase64);
+                }
+                Request postReq = new Request.Builder()
+                        .url(roomUrl)
+                        .post(RequestBody.create(jsonMediaType, syncPayload.toString()))
+                        .build();
+                try (Response postRes = client.newCall(postReq).execute()) {
+                    if (postRes.isSuccessful()) {
+                        lastPublishedReps = reps;
+                        lastPublishedScore = score;
+                        lastCloudRoomPostMs = nowMs;
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+
+        try {
+            Request pollReq = new Request.Builder()
+                    .url(roomUrl + "/json?poll=1&since=" + lastRoomPollSince)
+                    .get()
+                    .build();
+            try (Response pollRes = client.newCall(pollReq).execute()) {
+                if (pollRes.isSuccessful() && pollRes.body() != null) {
+                    String[] lines = pollRes.body().string().split("\n");
+                    for (String line : lines) {
+                        String trimmed = line.trim();
+                        if (trimmed.isEmpty()) continue;
+                        try {
+                            JsonObject env = gson.fromJson(trimmed, JsonObject.class);
+                            if (env == null || !env.has("event") || !"message".equals(env.get("event").getAsString())) {
+                                continue;
+                            }
+                            if (env.has("id") && !env.get("id").isJsonNull()) {
+                                lastRoomPollSince = env.get("id").getAsString();
+                            }
+                            if (!env.has("message") || env.get("message").isJsonNull()) continue;
+                            JsonObject msg = gson.fromJson(env.get("message").getAsString(), JsonObject.class);
+                            if (msg == null || !msg.has("d")) continue;
+                            String senderDev = msg.get("d").getAsString();
+                            if (senderDev.equals(DEVICE_ID)) continue;
+
+                            if (msg.has("r")) cachedOppReps = msg.get("r").getAsInt();
+                            if (msg.has("s")) cachedOppScore = msg.get("s").getAsInt();
+                            if (msg.has("a")) cachedOppAngle = msg.get("a").getAsInt();
+                            if (msg.has("h") && !msg.get("h").isJsonNull()) cachedOppHint = msg.get("h").getAsString();
+                            if (msg.has("f") && !msg.get("f").isJsonNull()) {
+                                String f = msg.get("f").getAsString();
+                                if (!f.isEmpty()) cachedOppFrame = f;
+                            }
+                        } catch (Exception ignored) {}
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+
+        return new PvpRoomSyncState(
+                true,
+                roomId,
+                "Đối Thủ",
+                "🧑‍🎤",
+                1,
+                50,
+                cachedOppReps,
+                cachedOppScore,
+                cachedOppAngle,
+                cachedOppHint,
+                cachedOppFrame,
+                "",
+                0,
+                true
+        );
     }
 
     private static PvpRoomSyncState parsePvpRoomSync(JsonObject obj) {

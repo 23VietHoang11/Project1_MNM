@@ -1759,9 +1759,13 @@ private fun PvpSafeCameraPreview(
             if (bmp != null) {
                 val encoded = withContext(Dispatchers.Default) {
                     runCatching {
-                        val scaled = Bitmap.createScaledBitmap(bmp, 160, 220, true)
+                        val scaled = Bitmap.createScaledBitmap(bmp, 120, 165, true)
                         val out = ByteArrayOutputStream()
-                        scaled.compress(Bitmap.CompressFormat.JPEG, 45, out)
+                        scaled.compress(Bitmap.CompressFormat.JPEG, 32, out)
+                        if (out.size() > 2100) {
+                            out.reset()
+                            scaled.compress(Bitmap.CompressFormat.JPEG, 22, out)
+                        }
                         if (scaled != bmp) scaled.recycle()
                         bmp.recycle()
                         Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
