@@ -14,7 +14,6 @@
   <img src="https://img.shields.io/badge/AI-Google_ML_Kit_Pose-4285F4?logo=google&logoColor=white" alt="ML Kit" />
   <img src="https://img.shields.io/badge/Backend-Node.js_%7C_Express-339933?logo=nodedotjs&logoColor=white" alt="Backend" />
   <img src="https://img.shields.io/badge/Database-MySQL_%7C_SQLite-4479A1?logo=mysql&logoColor=white" alt="Database" />
-  <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License" />
 </p>
 
 <p align="center">
